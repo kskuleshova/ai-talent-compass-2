@@ -1,12 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery, useSuspenseQuery, queryOptions } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { listVacancies } from "@/lib/vacancies.functions";
 import { Plus, Briefcase, Users, Clock } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
-const vacanciesQO = (fn: any) =>
-  queryOptions({ queryKey: ["vacancies"], queryFn: () => fn() });
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — Hirelens" }] }),
@@ -15,7 +13,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 function Dashboard() {
   const fn = useServerFn(listVacancies);
-  const { data: vacancies } = useQuery(vacanciesQO(fn));
+  const { data: vacancies } = useQuery({ queryKey: ["vacancies"], queryFn: () => fn() });
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
