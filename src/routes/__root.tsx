@@ -73,6 +73,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:description", content: "Analyze resumes and compare candidates against vacancy requirements with AI." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
+      { name: "twitter:title", content: "Hirelens — AI Recruiter Assistant" },
+      { name: "twitter:description", content: "Analyze resumes and compare candidates against vacancy requirements with AI." },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/d4014d8c-dd84-4ecf-aae5-c8d07cebb6a5" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/d4014d8c-dd84-4ecf-aae5-c8d07cebb6a5" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
