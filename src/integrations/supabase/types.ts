@@ -14,7 +14,213 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      candidate_analyses: {
+        Row: {
+          candidate_id: string
+          created_at: string
+          id: string
+          matches: Json
+          missing: Json
+          model: string | null
+          owner_id: string
+          partial_matches: Json
+          recommendation: string | null
+          risks: Json
+          suggested_questions: Json
+          summary: Json
+        }
+        Insert: {
+          candidate_id: string
+          created_at?: string
+          id?: string
+          matches?: Json
+          missing?: Json
+          model?: string | null
+          owner_id: string
+          partial_matches?: Json
+          recommendation?: string | null
+          risks?: Json
+          suggested_questions?: Json
+          summary?: Json
+        }
+        Update: {
+          candidate_id?: string
+          created_at?: string
+          id?: string
+          matches?: Json
+          missing?: Json
+          model?: string | null
+          owner_id?: string
+          partial_matches?: Json
+          recommendation?: string | null
+          risks?: Json
+          suggested_questions?: Json
+          summary?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_analyses_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      candidates: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          owner_id: string
+          resume_filename: string | null
+          resume_path: string | null
+          resume_text: string | null
+          status: string
+          updated_at: string
+          vacancy_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          owner_id: string
+          resume_filename?: string | null
+          resume_path?: string | null
+          resume_text?: string | null
+          status?: string
+          updated_at?: string
+          vacancy_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          owner_id?: string
+          resume_filename?: string | null
+          resume_path?: string | null
+          resume_text?: string | null
+          status?: string
+          updated_at?: string
+          vacancy_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidates_vacancy_id_fkey"
+            columns: ["vacancy_id"]
+            isOneToOne: false
+            referencedRelation: "vacancies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      recruiter_notes: {
+        Row: {
+          body: string
+          candidate_id: string
+          created_at: string
+          id: string
+          owner_id: string
+        }
+        Insert: {
+          body: string
+          candidate_id: string
+          created_at?: string
+          id?: string
+          owner_id: string
+        }
+        Update: {
+          body?: string
+          candidate_id?: string
+          created_at?: string
+          id?: string
+          owner_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recruiter_notes_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vacancies: {
+        Row: {
+          created_at: string
+          hiring_manager_brief: string | null
+          historical_feedback: string | null
+          id: string
+          job_description: string | null
+          last_activity_at: string
+          must_have: string | null
+          nice_to_have: string | null
+          owner_id: string
+          screening_questions: string | null
+          test_task: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          hiring_manager_brief?: string | null
+          historical_feedback?: string | null
+          id?: string
+          job_description?: string | null
+          last_activity_at?: string
+          must_have?: string | null
+          nice_to_have?: string | null
+          owner_id: string
+          screening_questions?: string | null
+          test_task?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          hiring_manager_brief?: string | null
+          historical_feedback?: string | null
+          id?: string
+          job_description?: string | null
+          last_activity_at?: string
+          must_have?: string | null
+          nice_to_have?: string | null
+          owner_id?: string
+          screening_questions?: string | null
+          test_task?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
