@@ -35,7 +35,8 @@ function CandidatePage() {
   });
 
   if (!data) return <div className="mx-auto max-w-6xl px-6 py-10"><div className="h-8 w-64 animate-pulse rounded bg-muted" /></div>;
-  const { candidate, analysis, notes, resume_url } = data;
+  const { candidate, notes, resume_url } = data;
+  const analysis: any = data.analysis;
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
