@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { extractResumeText } from "./resume-parser.server";
-import { analyzeCandidate } from "./ai-analysis.server";
+
 
 
  
@@ -84,7 +84,16 @@ export const uploadCandidate = createServerFn({ method: "POST" })
     // Always run AI analysis
     try {
       console.log("Starting AI analysis...");
-      const result = await analyzeCandidate({ vacancy, resumeText });
+      const res = await fetch("http://localhost/api/analyze", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ vacancy, resumeText }),
+});
+
+if (!res.ok) throw new Error("AI analysis failed");
+
+const result = await res.json();
+
       console.log("AI analysis complete, recommendation:", result.recommendation);
       await supabase.from("candidate_analyses").insert({
         candidate_id: candidate.id,
@@ -128,7 +137,23 @@ export const reanalyzeCandidate = createServerFn({ method: "POST" })
       .from("candidates").select("*, vacancies(*)").eq("id", data.id).single();
     if (error || !candidate) throw new Error("Candidate not found");
     console.log("Reanalyze: resume_text length:", candidate.resume_text?.length ?? 0);
-    const result = await analyzeCandidate({ vacancy: candidate.vacancies, resumeText: candidate.resume_text ?? "" });
+    const base = process.env.VERCEL_URL
+  ? `https://${process.env.VERCEL_URL}`
+  : "http://localhost:3000";
+
+const res = await fetch(`${base}/api/analyze`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    vacancy: candidate.vacancies,
+    resumeText: candidate.resume_text ?? "",
+  }),
+});
+
+if (!res.ok) throw new Error("AI analysis failed");
+
+const result = await res.json();
+
     await context.supabase.from("candidate_analyses").insert({
       candidate_id: candidate.id,
       owner_id: context.userId,
