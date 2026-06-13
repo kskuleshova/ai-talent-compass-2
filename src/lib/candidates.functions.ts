@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { extractResumeText } from "./resume-parser.server";
+import { analyzeCandidate } from "./ai-analysis.server";
 
 export const getCandidate = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -81,13 +82,13 @@ export const uploadCandidate = createServerFn({ method: "POST" })
 
     await supabase.from("vacancies").update({ last_activity_at: new Date().toISOString() }).eq("id", data.vacancy_id);
 
-    // Always run AI analysis
+    // Run AI analysis directly
     try {
       console.log("Starting AI analysis...");
 
-      const result = await $fetch("/api/analyze", {
-        method: "POST",
-        body: { vacancy, resumeText },
+      const result = await analyzeCandidate({
+        vacancy,
+        resumeText: resumeText || "",
       });
 
       console.log("AI analysis complete, recommendation:", result.recommendation);
@@ -137,12 +138,9 @@ export const reanalyzeCandidate = createServerFn({ method: "POST" })
 
     console.log("Reanalyze: resume_text length:", candidate.resume_text?.length ?? 0);
 
-    const result = await $fetch("/api/analyze", {
-      method: "POST",
-      body: {
-        vacancy: candidate.vacancies,
-        resumeText: candidate.resume_text ?? "",
-      },
+    const result = await analyzeCandidate({
+      vacancy: candidate.vacancies,
+      resumeText: candidate.resume_text ?? "",
     });
 
     await context.supabase.from("candidate_analyses").insert({
