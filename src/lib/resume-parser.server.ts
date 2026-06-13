@@ -41,4 +41,3 @@ export async function extractResumeText(buf: Buffer, ext: "pdf" | "docx"): Promi
   }
   return "";
 }
-}
