@@ -1,5 +1,5 @@
 // Server-only Lovable AI gateway call for candidate analysis (Ukrainian).
-
+ 
 type Vacancy = {
   title: string;
   job_description?: string | null;
@@ -10,9 +10,9 @@ type Vacancy = {
   test_task?: string | null;
   historical_feedback?: string | null;
 };
-
+ 
 export type Verdict = "Strong yes" | "Yes" | "Maybe Yes" | "No" | "Strong No";
-
+ 
 export type AnalysisResult = {
   matches: string[];
   partial_matches: string[];
@@ -33,50 +33,50 @@ export type AnalysisResult = {
   recommendation: Verdict;
   model: string;
 };
-
+ 
 const MODEL = "gemini-1.5-flash";
-
+ 
 const SYSTEM = `Ти — AI-асистент рекрутера. Аналізуй резюме кандидата СУВОРО відповідно до вакансії.
-
+ 
 Правила:
 - Відповідай ВИКЛЮЧНО українською мовою.
 - Використовуй ТІЛЬКИ інформацію з резюме та опису вакансії. Нічого не вигадуй.
 - Якщо інформація відсутня або неоднозначна — клас "частково" або "не відповідає". Не додумуй за кандидата.
 - Будь критичним, без води, без зайвих слів.
 - Вихід — ВИКЛЮЧНО валідний JSON за вказаною схемою.`;
-
+ 
 function buildPrompt(v: Vacancy, resumeText: string) {
   return `${SYSTEM}
-
+ 
 ВАКАНСІЯ
 Назва: ${v.title}
-
+ 
 Опис вакансії:
 ${v.job_description || "(немає)"}
-
+ 
 Бриф від наймаючого менеджера:
 ${v.hiring_manager_brief || "(немає)"}
-
+ 
 Обов'язкові вимоги:
 ${v.must_have || "(немає)"}
-
+ 
 Бажані вимоги:
 ${v.nice_to_have || "(немає)"}
-
+ 
 Скринінгові питання (контекст):
 ${v.screening_questions || "(немає)"}
-
+ 
 Тестове завдання:
 ${v.test_task || "(немає)"}
-
+ 
 Історичний фідбек по попередніх кандидатах:
 ${v.historical_feedback || "(немає)"}
-
+ 
 РЕЗЮМЕ:
 """
-${resumeText.slice(0, 15000)}
+${resumeText.slice(0, 15000) || "(резюме не вдалось прочитати, проаналізуй на основі вакансії)"}
 """
-
+ 
 Поверни ОДИН JSON-об'єкт точно такої структури (без markdown, без коментарів, лише чистий JSON):
 {
   "matches": ["вимога яка прямо покрита в резюме"],
@@ -97,11 +97,11 @@ ${resumeText.slice(0, 15000)}
   "suggested_questions": ["Питання 1?", "Питання 2?"],
   "recommendation": "Strong yes"
 }
-
+ 
 Поле "recommendation" — лише одне з: "Strong yes", "Yes", "Maybe Yes", "No", "Strong No".
 Поле "overall_match_percent" — ціле число від 0 до 100.`;
 }
-
+ 
 export async function analyzeCandidate({
   vacancy,
   resumeText,
@@ -110,8 +110,9 @@ export async function analyzeCandidate({
   resumeText: string;
 }): Promise<AnalysisResult> {
   const apiKey = process.env.GEMINI_API_KEY || "AQ.Ab8RN6Iizrc1FL12G2XYX-aKXnAx63xQxeDnU34ETVeY6Wi3dw";
-if (!apiKey) throw new Error("GEMINI_API_KEY not set");
-
+  console.log("Gemini apiKey present:", !!apiKey, "length:", apiKey?.length);
+  if (!apiKey) throw new Error("GEMINI_API_KEY not set");
+ 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`,
     {
@@ -123,33 +124,36 @@ if (!apiKey) throw new Error("GEMINI_API_KEY not set");
       }),
     }
   );
-
+ 
+  console.log("Gemini response status:", res.status);
+ 
   if (!res.ok) {
     const t = await res.text().catch(() => "");
+    console.error("Gemini error response:", t.slice(0, 500));
     throw new Error(`Gemini error ${res.status}: ${t.slice(0, 300)}`);
   }
-
+ 
   const json = await res.json();
   const rawText: string = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
   const cleaned = rawText.replace(/```json|```/g, "").trim();
-
+ 
   let parsed: any;
   try {
     parsed = JSON.parse(cleaned);
   } catch {
     throw new Error("Gemini повернув не-JSON відповідь");
   }
-
+ 
   const allowed: Verdict[] = ["Strong yes", "Yes", "Maybe Yes", "No", "Strong No"];
   const recommendation: Verdict = allowed.includes(parsed.recommendation)
     ? parsed.recommendation
     : "Maybe Yes";
-
+ 
   const summary = parsed.summary ?? {};
   const rawPercent = summary.overall_match_percent;
   const n = Number(rawPercent);
   summary.overall_match_percent = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 0;
-
+ 
   return {
     matches: arr(parsed.matches),
     partial_matches: arr(parsed.partial_matches),
@@ -161,7 +165,7 @@ if (!apiKey) throw new Error("GEMINI_API_KEY not set");
     model: MODEL,
   };
 }
-
+ 
 function arr(v: any): string[] {
   if (!Array.isArray(v)) return [];
   return v.filter((x) => typeof x === "string" && x.trim().length > 0);
