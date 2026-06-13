@@ -1,4 +1,4 @@
-// Server-only Lovable AI gateway call for candidate analysis.
+// Server-only Lovable AI gateway call for candidate analysis (Ukrainian).
 
 type Vacancy = {
   title: string;
@@ -11,6 +11,8 @@ type Vacancy = {
   historical_feedback?: string | null;
 };
 
+export type Verdict = "Strong yes" | "Yes" | "Maybe Yes" | "No" | "Strong No";
+
 export type AnalysisResult = {
   matches: string[];
   partial_matches: string[];
@@ -21,72 +23,80 @@ export type AnalysisResult = {
     industries?: string[];
     languages?: string[];
     leadership_experience?: string;
+    profile_summary?: string;
+    strengths?: string[];
+    overall_match_percent?: number;
+    next_steps?: string;
   };
   risks: string[];
   suggested_questions: string[];
-  recommendation: "Strong Match" | "Moderate Match" | "Weak Match";
+  recommendation: Verdict;
   model: string;
 };
 
 const MODEL = "google/gemini-3-flash-preview";
 
-const SYSTEM = `You are an expert recruiter assistant. You analyze a candidate's resume strictly against a vacancy brief.
+const SYSTEM = `Ти — AI-асистент рекрутера. Аналізуй резюме кандидата СУВОРО відповідно до вакансії.
 
-Strict rules:
-- Use ONLY information present in the resume and in the vacancy brief.
-- Never invent facts, employers, dates, education, or skills.
-- If something is unclear or missing, classify it as "partial" or "missing" — do not guess.
-- Be concise, factual, recruiter-friendly. No flattery.
-- Output MUST be valid JSON matching the requested schema exactly.`;
+Правила:
+- Відповідай ВИКЛЮЧНО українською мовою.
+- Використовуй ТІЛЬКИ інформацію з резюме та опису вакансії. Нічого не вигадуй.
+- Якщо інформація відсутня або неоднозначна — клас "частково" або "не відповідає". Не додумуй за кандидата.
+- Будь критичним, без води, без зайвих слів.
+- Вихід — ВИКЛЮЧНО валідний JSON за вказаною схемою.`;
 
 function buildUserPrompt(v: Vacancy, resumeText: string) {
-  return `VACANCY
-Title: ${v.title}
+  return `ВАКАНСІЯ
+Назва: ${v.title}
 
-Job description:
-${v.job_description || "(none)"}
+Опис вакансії:
+${v.job_description || "(немає)"}
 
-Hiring manager brief:
-${v.hiring_manager_brief || "(none)"}
+Бриф від наймаючого менеджера:
+${v.hiring_manager_brief || "(немає)"}
 
-Must-have requirements:
-${v.must_have || "(none)"}
+Обов'язкові вимоги:
+${v.must_have || "(немає)"}
 
-Nice-to-have requirements:
-${v.nice_to_have || "(none)"}
+Бажані вимоги:
+${v.nice_to_have || "(немає)"}
 
-Screening questions (for context):
-${v.screening_questions || "(none)"}
+Скринінгові питання (контекст):
+${v.screening_questions || "(немає)"}
 
-Test task:
-${v.test_task || "(none)"}
+Тестове завдання:
+${v.test_task || "(немає)"}
 
-Historical feedback from past hires:
-${v.historical_feedback || "(none)"}
+Історичний фідбек по попередніх кандидатах:
+${v.historical_feedback || "(немає)"}
 
-RESUME (verbatim text extracted from the candidate's file):
+РЕЗЮМЕ (текст, витягнутий з файлу кандидата):
 """
 ${resumeText.slice(0, 15000)}
 """
 
-Produce ONE JSON object with this exact shape:
+Поверни ОДИН JSON-об'єкт точно такої структури:
 {
-  "matches": string[],            // requirements clearly covered, each as a short factual sentence
-  "partial_matches": string[],    // requirements partially covered or needing clarification
-  "missing": string[],            // requirements not found in the resume
+  "matches": string[],            // вимоги, які ПРЯМО і ЧІТКО збігаються з резюме
+  "partial_matches": string[],    // вимоги, де є сигнали, але потрібно уточнити (рівень, обсяг, суміжний досвід тощо)
+  "missing": string[],            // вимоги, які не покриті в резюме або не мають жодних ознак відповідності
   "summary": {
-    "current_role": string,       // empty string if unknown
-    "years_of_experience": string,// e.g. "8+ years" or empty
+    "current_role": string,
+    "years_of_experience": string,
     "industries": string[],
     "languages": string[],
-    "leadership_experience": string
+    "leadership_experience": string,
+    "profile_summary": string,      // коротке загальне позиціонування кандидата
+    "strengths": string[],          // ключові сильні сторони
+    "overall_match_percent": number,// 0-100, загальний % відповідності вакансії
+    "next_steps": string            // конкретні наступні дії для рекрутера відповідно до висновку
   },
-  "risks": string[],              // concerns based ONLY on resume (gaps, job-hopping, mismatched seniority, etc.)
-  "suggested_questions": string[],// 5-10 recruiter questions to clarify missing info
-  "recommendation": "Strong Match" | "Moderate Match" | "Weak Match"
+  "risks": string[],              // ризики / питання, що потребують уточнення (тільки на основі резюме)
+  "suggested_questions": string[],// 5-10 скринінгових питань українською
+  "recommendation": "Strong yes" | "Yes" | "Maybe Yes" | "No" | "Strong No"
 }
 
-Return JSON only, no prose, no markdown fences.`;
+Поверни лише JSON без коментарів і без markdown.`;
 }
 
 export async function analyzeCandidate({ vacancy, resumeText }: { vacancy: Vacancy; resumeText: string }): Promise<AnalysisResult> {
@@ -109,8 +119,8 @@ export async function analyzeCandidate({ vacancy, resumeText }: { vacancy: Vacan
     }),
   });
 
-  if (res.status === 429) throw new Error("AI rate limit reached. Please try again in a moment.");
-  if (res.status === 402) throw new Error("AI credits exhausted. Add credits in your workspace settings.");
+  if (res.status === 429) throw new Error("Перевищено ліміт AI. Спробуйте за хвилину.");
+  if (res.status === 402) throw new Error("Закінчились AI-кредити. Поповніть баланс у налаштуваннях воркспейсу.");
   if (!res.ok) {
     const t = await res.text().catch(() => "");
     throw new Error(`AI gateway error ${res.status}: ${t.slice(0, 300)}`);
@@ -119,17 +129,27 @@ export async function analyzeCandidate({ vacancy, resumeText }: { vacancy: Vacan
   const content: string = json.choices?.[0]?.message?.content ?? "{}";
   let parsed: any;
   try { parsed = JSON.parse(content); }
-  catch { throw new Error("AI returned non-JSON response"); }
+  catch { throw new Error("AI повернув не-JSON відповідь"); }
+
+  const allowed: Verdict[] = ["Strong yes", "Yes", "Maybe Yes", "No", "Strong No"];
+  const recommendation: Verdict = allowed.includes(parsed.recommendation) ? parsed.recommendation : "Maybe Yes";
+
+  const summary = parsed.summary ?? {};
+  if (typeof summary.overall_match_percent !== "number") {
+    const n = Number(summary.overall_match_percent);
+    summary.overall_match_percent = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 0;
+  } else {
+    summary.overall_match_percent = Math.max(0, Math.min(100, Math.round(summary.overall_match_percent)));
+  }
 
   return {
     matches: arr(parsed.matches),
     partial_matches: arr(parsed.partial_matches),
     missing: arr(parsed.missing),
-    summary: parsed.summary ?? {},
+    summary,
     risks: arr(parsed.risks),
     suggested_questions: arr(parsed.suggested_questions),
-    recommendation: ["Strong Match", "Moderate Match", "Weak Match"].includes(parsed.recommendation)
-      ? parsed.recommendation : "Moderate Match",
+    recommendation,
     model: MODEL,
   };
 }
