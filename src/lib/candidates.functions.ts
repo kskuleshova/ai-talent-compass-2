@@ -6,24 +6,34 @@ import { analyzeCandidate } from "./ai-analysis.server";
 
 export const getCandidate = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { id: string }) => z.object({ id: z.string().uuid() }).parse(d))
+  .validator((d: { id: string }) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { data: candidate, error } = await context.supabase
-      .from("candidates").select("*, vacancies(id, title)").eq("id", data.id).single();
+      .from("candidates")
+      .select("*, vacancies(id, title)")
+      .eq("id", data.id)
+      .single();
     if (error) throw new Error(error.message);
 
     const { data: analysis } = await context.supabase
-      .from("candidate_analyses").select("*").eq("candidate_id", data.id)
-      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+      .from("candidate_analyses")
+      .select("*")
+      .eq("candidate_id", data.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     const { data: notes } = await context.supabase
-      .from("recruiter_notes").select("*").eq("candidate_id", data.id)
+      .from("recruiter_notes")
+      .select("*")
+      .eq("candidate_id", data.id)
       .order("created_at", { ascending: false });
 
     let resume_url: string | null = null;
     if (candidate.resume_path) {
       const { data: signed } = await context.supabase.storage
-        .from("resumes").createSignedUrl(candidate.resume_path, 60 * 60);
+        .from("resumes")
+        .createSignedUrl(candidate.resume_path, 60 * 60);
       resume_url = signed?.signedUrl ?? null;
     }
 
@@ -40,12 +50,15 @@ const UploadSchema = z.object({
 
 export const uploadCandidate = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => UploadSchema.parse(d))
+  .validator((d: unknown) => UploadSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
     const { data: vacancy, error: vErr } = await supabase
-      .from("vacancies").select("*").eq("id", data.vacancy_id).single();
+      .from("vacancies")
+      .select("*")
+      .eq("id", data.vacancy_id)
+      .single();
     if (vErr || !vacancy) throw new Error("Vacancy not found");
 
     const buf = Buffer.from(data.base64, "base64");
@@ -56,20 +69,27 @@ export const uploadCandidate = createServerFn({ method: "POST" })
 
     const path = `${userId}/${data.vacancy_id}/${crypto.randomUUID()}.${ext}`;
     const { error: upErr } = await supabase.storage
-      .from("resumes").upload(path, buf, { contentType: data.mime, upsert: false });
+      .from("resumes")
+      .upload(path, buf, { contentType: data.mime, upsert: false });
     if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
 
     // Extract text
     let resumeText = "";
     try {
       resumeText = await extractResumeText(buf, ext as "pdf" | "docx");
-      console.log("Resume text extracted, length:", resumeText.length, "preview:", resumeText.slice(0, 100));
+      console.log(
+        "Resume text extracted, length:",
+        resumeText.length,
+        "preview:",
+        resumeText.slice(0, 100),
+      );
     } catch (e) {
       console.error("Resume parsing failed", e);
     }
 
     const { data: candidate, error: cErr } = await supabase
-      .from("candidates").insert({
+      .from("candidates")
+      .insert({
         owner_id: userId,
         vacancy_id: data.vacancy_id,
         name: data.name,
@@ -77,10 +97,15 @@ export const uploadCandidate = createServerFn({ method: "POST" })
         resume_filename: data.filename,
         resume_text: resumeText || null,
         status: "analyzing",
-      }).select().single();
+      })
+      .select()
+      .single();
     if (cErr) throw new Error(cErr.message);
 
-    await supabase.from("vacancies").update({ last_activity_at: new Date().toISOString() }).eq("id", data.vacancy_id);
+    await supabase
+      .from("vacancies")
+      .update({ last_activity_at: new Date().toISOString() })
+      .eq("id", data.vacancy_id);
 
     // Run AI analysis directly
     try {
@@ -106,10 +131,16 @@ export const uploadCandidate = createServerFn({ method: "POST" })
         model: result.model,
       });
 
-      await supabase.from("candidates").update({ status: "analyzed" }).eq("id", candidate.id);
+      await supabase
+        .from("candidates")
+        .update({ status: "analyzed" })
+        .eq("id", candidate.id);
     } catch (e) {
       console.error("AI analysis failed", e);
-      await supabase.from("candidates").update({ status: "analysis_failed" }).eq("id", candidate.id);
+      await supabase
+        .from("candidates")
+        .update({ status: "analysis_failed" })
+        .eq("id", candidate.id);
     }
 
     return { id: candidate.id };
@@ -117,35 +148,82 @@ export const uploadCandidate = createServerFn({ method: "POST" })
 
 export const addNote = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) =>
-    z.object({ candidate_id: z.string().uuid(), body: z.string().trim().min(1).max(5000) }).parse(d),
+  .validator((d: unknown) =>
+    z
+      .object({
+        candidate_id: z.string().uuid(),
+        body: z.string().trim().min(1).max(5000),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     const { error } = await context.supabase
       .from("recruiter_notes")
-      .insert({ candidate_id: data.candidate_id, owner_id: context.userId, body: data.body });
+      .insert({
+        candidate_id: data.candidate_id,
+        owner_id: context.userId,
+        body: data.body,
+      });
     if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+// 🔥 НОВА ФУНКЦІЯ: доповнення аналізу вручну
+export const updateAnalysis = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: unknown) =>
+    z
+      .object({
+        candidate_id: z.string().uuid(),
+        extra: z.string().trim().min(1).max(5000),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+
+    const { error } = await supabase
+      .from("candidate_analyses")
+      .update({
+        extra_notes: data.extra,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("candidate_id", data.candidate_id);
+
+    if (error) throw new Error(error.message);
+
     return { ok: true };
   });
 
 export const reanalyzeCandidate = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { id: string }) => z.object({ id: z.string().uuid() }).parse(d))
+  .validator((d: { id: string }) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    const { data: candidate, error } = await context.supabase
-      .from("candidates").select("*, vacancies(*)").eq("id", data.id).single();
+    const { supabase, userId } = context;
+
+    const { data: candidate, error } = await supabase
+      .from("candidates")
+      .select("*, vacancies(*)")
+      .eq("id", data.id)
+      .single();
     if (error || !candidate) throw new Error("Candidate not found");
 
     console.log("Reanalyze: resume_text length:", candidate.resume_text?.length ?? 0);
+
+    // оновлюємо статус, щоб у UI можна було показати "Переаналізуємо..."
+    await supabase
+      .from("candidates")
+      .update({ status: "reanalyzing" })
+      .eq("id", candidate.id);
 
     const result = await analyzeCandidate({
       vacancy: candidate.vacancies,
       resumeText: candidate.resume_text ?? "",
     });
 
-    await context.supabase.from("candidate_analyses").insert({
+    await supabase.from("candidate_analyses").insert({
       candidate_id: candidate.id,
-      owner_id: context.userId,
+      owner_id: userId,
       matches: result.matches,
       partial_matches: result.partial_matches,
       missing: result.missing,
@@ -156,7 +234,10 @@ export const reanalyzeCandidate = createServerFn({ method: "POST" })
       model: result.model,
     });
 
-    await context.supabase.from("candidates").update({ status: "analyzed" }).eq("id", candidate.id);
+    await supabase
+      .from("candidates")
+      .update({ status: "analyzed" })
+      .eq("id", candidate.id);
 
     return { ok: true };
   });
