@@ -57,13 +57,14 @@ export const uploadCandidate = createServerFn({ method: "POST" })
       .from("resumes").upload(path, buf, { contentType: data.mime, upsert: false });
     if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
 
-    // Extract text
-    let resumeText = "";
-    try {
-      resumeText = await extractResumeText(buf, ext as "pdf" | "docx");
-    } catch (e) {
-      console.error("Resume parsing failed", e);
-    }
+// Extract text
+let resumeText = "";
+try {
+  resumeText = await extractResumeText(buf, ext as "pdf" | "docx");
+  console.log("Resume text extracted, length:", resumeText.length, "preview:", resumeText.slice(0, 100));
+} catch (e) {
+  console.error("Resume parsing failed", e);
+}
 
     const { data: candidate, error: cErr } = await supabase
       .from("candidates").insert({
