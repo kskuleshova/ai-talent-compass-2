@@ -3,30 +3,36 @@
 // for our cases — pdf-parse + mammoth work in Node/Workers with buffers).
 export async function extractResumeText(buf: Buffer, ext: "pdf" | "docx"): Promise<string> {
   if (ext === "pdf") {
-    // Use pdfjs-dist directly with Node.js compatible settings
-    const pdfjsLib: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
-    pdfjsLib.GlobalWorkerOptions.workerSrc = "";
-
-    const loadingTask = pdfjsLib.getDocument({
-      data: new Uint8Array(buf),
-      useWorkerFetch: false,
-      isEvalSupported: false,
-      useSystemFonts: true,
-    });
-
-    const pdf = await loadingTask.promise;
-    const pages: string[] = [];
-
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
-      const text = content.items
-        .map((item: any) => ("str" in item ? item.str : ""))
-        .join(" ");
-      pages.push(text);
+    try {
+      // Extract raw text from PDF by finding text streams
+      const str = buf.toString("latin1");
+      const texts: string[] = [];
+      
+      // Match BT...ET blocks (PDF text blocks)
+      const btEtRegex = /BT([\s\S]*?)ET/g;
+      let match;
+      while ((match = btEtRegex.exec(str)) !== null) {
+        const block = match[1];
+        // Match strings in parentheses: (text)
+        const strRegex = /\(([^)\\]*(?:\\.[^)\\]*)*)\)/g;
+        let strMatch;
+        while ((strMatch = strRegex.exec(block)) !== null) {
+          const text = strMatch[1]
+            .replace(/\\n/g, "\n")
+            .replace(/\\r/g, "\r")
+            .replace(/\\t/g, "\t")
+            .replace(/\\\(/g, "(")
+            .replace(/\\\)/g, ")")
+            .replace(/\\\\/g, "\\");
+          if (text.trim().length > 0) texts.push(text);
+        }
+      }
+      
+      return texts.join(" ").replace(/\s+/g, " ").trim();
+    } catch (e) {
+      console.error("PDF parsing failed", e);
+      return "";
     }
-
-    return pages.join("\n").trim();
   }
   if (ext === "docx") {
     const mammoth: any = await import("mammoth");
@@ -34,4 +40,5 @@ export async function extractResumeText(buf: Buffer, ext: "pdf" | "docx"): Promi
     return (value ?? "").trim();
   }
   return "";
+}
 }
