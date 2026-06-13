@@ -109,7 +109,7 @@ export async function analyzeCandidate({
   vacancy: Vacancy;
   resumeText: string;
 }): Promise<AnalysisResult> {
-  const apiKey = process.env.GEMINI_API_KEY || "AQ.Ab8RN6I3ENIDxBXorR_ouo4kDb07XW92DmrTj-fFRQ3oaLnRcw";
+  const apiKey = process.env.GEMINI_API_KEY || "AQ.Ab8RN6Iizrc1FL12G2XYX-aKXnAx63xQxeDnU34ETVeY6Wi3dw";
 if (!apiKey) throw new Error("GEMINI_API_KEY not set");
 
   const res = await fetch(
