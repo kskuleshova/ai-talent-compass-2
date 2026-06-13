@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { RecommendationBadge } from "./vacancies.$id";
 
 export const Route = createFileRoute("/_authenticated/candidates/$id")({
-  head: () => ({ meta: [{ title: "Candidate — Hirelens" }] }),
+  head: () => ({ meta: [{ title: "Кандидат — Hirelens" }] }),
   component: CandidatePage,
 });
 
@@ -24,19 +24,20 @@ function CandidatePage() {
 
   const noteMut = useMutation({
     mutationFn: () => noteFn({ data: { candidate_id: id, body: noteBody.trim() } }),
-    onSuccess: () => { setNoteBody(""); qc.invalidateQueries({ queryKey: ["candidate", id] }); toast.success("Note added"); },
-    onError: (e: any) => toast.error(e.message ?? "Failed"),
+    onSuccess: () => { setNoteBody(""); qc.invalidateQueries({ queryKey: ["candidate", id] }); toast.success("Нотатку додано"); },
+    onError: (e: any) => toast.error(e.message ?? "Помилка"),
   });
 
   const reanalyzeMut = useMutation({
     mutationFn: () => reFn({ data: { id } }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["candidate", id] }); toast.success("Re-analyzed"); },
-    onError: (e: any) => toast.error(e.message ?? "Failed"),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["candidate", id] }); toast.success("Переаналізовано"); },
+    onError: (e: any) => toast.error(e.message ?? "Помилка"),
   });
 
   if (!data) return <div className="mx-auto max-w-6xl px-6 py-10"><div className="h-8 w-64 animate-pulse rounded bg-muted" /></div>;
   const { candidate, notes, resume_url } = data;
   const analysis: any = data.analysis;
+  const percent: number | undefined = analysis?.summary?.overall_match_percent;
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
@@ -52,14 +53,14 @@ function CandidatePage() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">{candidate.name}</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {analysis ? <>Analyzed {new Date(analysis.created_at).toLocaleString()}</> : "No analysis yet"}
+              {analysis ? <>Проаналізовано {new Date(analysis.created_at).toLocaleString("uk-UA")}</> : "Аналізу ще немає"}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           {resume_url && (
             <a href={resume_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-accent">
-              <FileText className="h-4 w-4" /> Resume
+              <FileText className="h-4 w-4" /> Резюме
             </a>
           )}
           <button
@@ -68,7 +69,7 @@ function CandidatePage() {
             className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
           >
             {reanalyzeMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Re-analyze
+            Переаналізувати
           </button>
         </div>
       </header>
@@ -79,39 +80,74 @@ function CandidatePage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-primary" />
-                <h2 className="font-medium">AI Analysis</h2>
+                <h2 className="font-medium">AI-аналіз</h2>
               </div>
               <RecommendationBadge value={analysis?.recommendation} status={candidate.status} />
             </div>
 
             {!analysis ? (
               <p className="mt-4 text-sm text-muted-foreground">
-                {candidate.status === "analyzing" ? "Analysis in progress…" : "No analysis available yet."}
+                {candidate.status === "analyzing" ? "Аналіз триває…" : "Аналізу ще немає."}
               </p>
             ) : (
               <div className="mt-5 space-y-6">
-                <Group icon={<CheckCircle2 className="h-4 w-4 text-success" />} title="Matches requirements" items={analysis.matches} empty="Nothing matched yet." />
-                <Group icon={<AlertTriangle className="h-4 w-4 text-warning-foreground" />} title="Partially matches / needs clarification" items={analysis.partial_matches} empty="No partial matches." />
-                <Group icon={<XCircle className="h-4 w-4 text-destructive" />} title="Missing requirements" items={analysis.missing} empty="No gaps detected." />
+                {typeof percent === "number" && (
+                  <div className="rounded-lg border border-border bg-background p-4">
+                    <div className="mb-2 flex items-center justify-between text-sm">
+                      <span className="font-medium">Загальна відповідність</span>
+                      <span className="font-semibold">{percent}%</span>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={`h-full ${percent >= 75 ? "bg-success" : percent >= 50 ? "bg-warning" : "bg-destructive"}`}
+                        style={{ width: `${percent}%` }}
+                      />
+                    </div>
+                    {analysis.summary?.profile_summary && (
+                      <p className="mt-3 text-sm leading-relaxed">{analysis.summary.profile_summary}</p>
+                    )}
+                  </div>
+                )}
+
+                <Group icon={<CheckCircle2 className="h-4 w-4 text-success" />} title="Відповідає" items={analysis.matches} empty="Поки що нічого." />
+                <Group icon={<AlertTriangle className="h-4 w-4 text-warning-foreground" />} title="Частково відповідає / потрібно уточнити" items={analysis.partial_matches} empty="Немає часткових збігів." />
+                <Group icon={<XCircle className="h-4 w-4 text-destructive" />} title="Не відповідає" items={analysis.missing} empty="Прогалин не виявлено." />
 
                 <div>
-                  <h3 className="mb-2 text-sm font-semibold">Candidate summary</h3>
+                  <h3 className="mb-2 text-sm font-semibold">Профіль кандидата</h3>
                   <dl className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-background p-4 text-sm">
-                    <SummaryItem label="Current role" value={analysis.summary?.current_role} />
-                    <SummaryItem label="Experience" value={analysis.summary?.years_of_experience} />
-                    <SummaryItem label="Industries" value={(analysis.summary?.industries ?? []).join(", ")} />
-                    <SummaryItem label="Languages" value={(analysis.summary?.languages ?? []).join(", ")} />
-                    <SummaryItem label="Leadership" value={analysis.summary?.leadership_experience} full />
+                    <SummaryItem label="Поточна роль" value={analysis.summary?.current_role} />
+                    <SummaryItem label="Досвід" value={analysis.summary?.years_of_experience} />
+                    <SummaryItem label="Індустрії" value={(analysis.summary?.industries ?? []).join(", ")} />
+                    <SummaryItem label="Мови" value={(analysis.summary?.languages ?? []).join(", ")} />
+                    <SummaryItem label="Лідерський досвід" value={analysis.summary?.leadership_experience} full />
                   </dl>
                 </div>
 
-                {analysis.risks?.length > 0 && (
-                  <Group icon={<AlertTriangle className="h-4 w-4 text-warning-foreground" />} title="Risks" items={analysis.risks} empty="" />
+                {analysis.summary?.strengths?.length > 0 && (
+                  <Group icon={<CheckCircle2 className="h-4 w-4 text-success" />} title="Сильні сторони" items={analysis.summary.strengths} empty="" />
                 )}
+
+                {analysis.risks?.length > 0 && (
+                  <Group icon={<AlertTriangle className="h-4 w-4 text-warning-foreground" />} title="Ризики" items={analysis.risks} empty="" />
+                )}
+
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold">Висновок</h3>
+                    <RecommendationBadge value={analysis.recommendation} />
+                  </div>
+                  {analysis.summary?.next_steps && (
+                    <div className="mt-3">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Наступні дії</p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">{analysis.summary.next_steps}</p>
+                    </div>
+                  )}
+                </div>
 
                 {analysis.suggested_questions?.length > 0 && (
                   <div>
-                    <h3 className="mb-2 text-sm font-semibold">Suggested screening questions</h3>
+                    <h3 className="mb-2 text-sm font-semibold">Рекомендовані скринінгові питання</h3>
                     <ol className="list-decimal space-y-2 pl-5 text-sm">
                       {analysis.suggested_questions.map((q: string, i: number) => <li key={i}>{q}</li>)}
                     </ol>
@@ -124,25 +160,25 @@ function CandidatePage() {
 
         <aside>
           <div className="rounded-xl border border-border bg-card p-5">
-            <h2 className="font-medium">Recruiter notes</h2>
+            <h2 className="font-medium">Нотатки рекрутера</h2>
             <form onSubmit={(e) => { e.preventDefault(); if (noteBody.trim()) noteMut.mutate(); }} className="mt-3">
               <textarea
                 value={noteBody} onChange={(e) => setNoteBody(e.target.value)} rows={3} maxLength={5000}
-                placeholder="Add a note…"
+                placeholder="Додати нотатку…"
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
               />
               <div className="mt-2 flex justify-end">
                 <button type="submit" disabled={noteMut.isPending || !noteBody.trim()} className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-                  Add note
+                  Додати нотатку
                 </button>
               </div>
             </form>
             <ul className="mt-4 space-y-3">
-              {notes.length === 0 && <li className="text-xs text-muted-foreground">No notes yet.</li>}
+              {notes.length === 0 && <li className="text-xs text-muted-foreground">Нотаток поки немає.</li>}
               {notes.map((n: any) => (
                 <li key={n.id} className="rounded-md border border-border bg-background p-3 text-sm">
                   <p className="whitespace-pre-wrap">{n.body}</p>
-                  <p className="mt-1.5 text-xs text-muted-foreground">{new Date(n.created_at).toLocaleString()}</p>
+                  <p className="mt-1.5 text-xs text-muted-foreground">{new Date(n.created_at).toLocaleString("uk-UA")}</p>
                 </li>
               ))}
             </ul>
