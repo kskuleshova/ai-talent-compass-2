@@ -2,6 +2,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { extractResumeText } from "./resume-parser.server";
+import { analyzeCandidate } from "./ai-analysis.server";
+
 
  
 export const getCandidate = createServerFn({ method: "GET" })
