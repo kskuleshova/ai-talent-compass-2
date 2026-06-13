@@ -4,31 +4,46 @@
 export async function extractResumeText(buf: Buffer, ext: "pdf" | "docx"): Promise<string> {
   if (ext === "pdf") {
     try {
-      // Extract raw text from PDF by finding text streams
       const str = buf.toString("latin1");
       const texts: string[] = [];
-      
-      // Match BT...ET blocks (PDF text blocks)
+ 
       const btEtRegex = /BT([\s\S]*?)ET/g;
       let match;
       while ((match = btEtRegex.exec(str)) !== null) {
         const block = match[1];
-        // Match strings in parentheses: (text)
-        const strRegex = /\(([^)\\]*(?:\\.[^)\\]*)*)\)/g;
-        let strMatch;
-        while ((strMatch = strRegex.exec(block)) !== null) {
-          const text = strMatch[1]
-            .replace(/\\n/g, "\n")
-            .replace(/\\r/g, "\r")
-            .replace(/\\t/g, "\t")
+ 
+        const tRegex = /\(([^)\\]*(?:\\.[^)\\]*)*)\)\s*Tj/g;
+        const tjRegex = /\[((?:[^[\]]*|\[[^[\]]*\])*)\]\s*TJ/g;
+ 
+        let m;
+        while ((m = tRegex.exec(block)) !== null) {
+          const t = m[1]
+            .replace(/\\n/g, " ")
+            .replace(/\\r/g, " ")
+            .replace(/\\t/g, " ")
             .replace(/\\\(/g, "(")
             .replace(/\\\)/g, ")")
             .replace(/\\\\/g, "\\");
-          if (text.trim().length > 0) texts.push(text);
+          if (t.trim()) texts.push(t);
+        }
+        while ((m = tjRegex.exec(block)) !== null) {
+          const parts = m[1].match(/\(([^)\\]*(?:\\.[^)\\]*)*)\)/g) || [];
+          for (const p of parts) {
+            const t = p.slice(1, -1)
+              .replace(/\\n/g, " ")
+              .replace(/\\\(/g, "(")
+              .replace(/\\\)/g, ")");
+            if (t.trim()) texts.push(t);
+          }
         }
       }
-      
-      return texts.join(" ").replace(/\s+/g, " ").trim();
+ 
+      // Filter to only printable ASCII + basic unicode, remove control chars
+      const raw = texts.join(" ").replace(/\s+/g, " ").trim();
+      const clean = raw.replace(/[^\x20-\x7E\u00A0-\u024F\u0400-\u04FF\s]/g, "").trim();
+ 
+      console.log("PDF clean text length:", clean.length, "preview:", clean.slice(0, 100));
+      return clean;
     } catch (e) {
       console.error("PDF parsing failed", e);
       return "";
