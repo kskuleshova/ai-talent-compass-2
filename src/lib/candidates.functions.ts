@@ -83,16 +83,19 @@ export const uploadCandidate = createServerFn({ method: "POST" })
  
     // Always run AI analysis
     try {
-      console.log("Starting AI analysis...");
-      const res = await fetch("http://localhost/api/analyze", {
+     console.log("Starting AI analysis...");
+
+const res = await fetch("/api/analyze", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ vacancy, resumeText }),
 });
 
 if (!res.ok) throw new Error("AI analysis failed");
-
 const result = await res.json();
+
+console.log("AI analysis complete, recommendation:", result.recommendation);
+
 
       console.log("AI analysis complete, recommendation:", result.recommendation);
       await supabase.from("candidate_analyses").insert({
@@ -141,7 +144,7 @@ export const reanalyzeCandidate = createServerFn({ method: "POST" })
   ? `https://${process.env.VERCEL_URL}`
   : "http://localhost:3000";
 
-const res = await fetch(`${base}/api/analyze`, {
+const res = await fetch("/api/analyze", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
@@ -151,7 +154,6 @@ const res = await fetch(`${base}/api/analyze`, {
 });
 
 if (!res.ok) throw new Error("AI analysis failed");
-
 const result = await res.json();
 
     await context.supabase.from("candidate_analyses").insert({
