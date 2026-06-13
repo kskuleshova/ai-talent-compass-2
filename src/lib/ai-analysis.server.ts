@@ -34,7 +34,7 @@ export type AnalysisResult = {
   model: string;
 };
  
-const MODEL = "gemini-1.5-flash";
+const MODEL = "gemini-2.0-flash";
  
 const SYSTEM = `Ти — AI-асистент рекрутера. Аналізуй резюме кандидата СУВОРО відповідно до вакансії.
  
