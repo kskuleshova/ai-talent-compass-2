@@ -169,13 +169,19 @@ function DetailBlock({ title, body }: { title: string; body: string | null }) {
 
 export function RecommendationBadge({ value, status }: { value?: string | null; status?: string }) {
   if (status === "analyzing") {
-    return <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2.5 py-0.5 text-xs font-medium text-accent-foreground"><Loader2 className="h-3 w-3 animate-spin" /> Analyzing</span>;
+    return <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2.5 py-0.5 text-xs font-medium text-accent-foreground"><Loader2 className="h-3 w-3 animate-spin" /> Аналізуємо</span>;
   }
   if (status === "analysis_failed") {
-    return <span className="rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive">Analysis failed</span>;
+    return <span className="rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive">Помилка аналізу</span>;
   }
-  if (!value) return <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">Pending</span>;
+  if (!value) return <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">Очікує</span>;
   const map: Record<string, string> = {
+    "Strong yes": "bg-success/15 text-success border border-success/30",
+    "Yes": "bg-success/10 text-success border border-success/20",
+    "Maybe Yes": "bg-warning/15 text-warning-foreground border border-warning/40",
+    "No": "bg-destructive/10 text-destructive border border-destructive/30",
+    "Strong No": "bg-destructive/20 text-destructive border border-destructive/40",
+    // legacy
     "Strong Match": "bg-success/15 text-success border border-success/30",
     "Moderate Match": "bg-warning/15 text-warning-foreground border border-warning/40",
     "Weak Match": "bg-destructive/10 text-destructive border border-destructive/30",
