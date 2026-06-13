@@ -3,13 +3,30 @@
 // for our cases — pdf-parse + mammoth work in Node/Workers with buffers).
 export async function extractResumeText(buf: Buffer, ext: "pdf" | "docx"): Promise<string> {
   if (ext === "pdf") {
-    const mod: any = await import("pdf-parse");
-    const pdfParse = mod.default ?? mod;
-    const result = await pdfParse(buf, {
-      max: 0,
-      version: "default",
+    // Use pdfjs-dist directly with Node.js compatible settings
+    const pdfjsLib: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "";
+
+    const loadingTask = pdfjsLib.getDocument({
+      data: new Uint8Array(buf),
+      useWorkerFetch: false,
+      isEvalSupported: false,
+      useSystemFonts: true,
     });
-    return (result.text ?? "").trim();
+
+    const pdf = await loadingTask.promise;
+    const pages: string[] = [];
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const text = content.items
+        .map((item: any) => ("str" in item ? item.str : ""))
+        .join(" ");
+      pages.push(text);
+    }
+
+    return pages.join("\n").trim();
   }
   if (ext === "docx") {
     const mammoth: any = await import("mammoth");
