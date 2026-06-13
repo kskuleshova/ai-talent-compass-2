@@ -85,14 +85,10 @@ export const uploadCandidate = createServerFn({ method: "POST" })
     try {
       console.log("Starting AI analysis...");
 
-      const res = await fetch("/api/analyze", {
+      const result = await $fetch("/api/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vacancy, resumeText }),
+        body: { vacancy, resumeText },
       });
-
-      if (!res.ok) throw new Error("AI analysis failed");
-      const result = await res.json();
 
       console.log("AI analysis complete, recommendation:", result.recommendation);
 
@@ -141,17 +137,13 @@ export const reanalyzeCandidate = createServerFn({ method: "POST" })
 
     console.log("Reanalyze: resume_text length:", candidate.resume_text?.length ?? 0);
 
-    const res = await fetch("/api/analyze", {
+    const result = await $fetch("/api/analyze", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      body: {
         vacancy: candidate.vacancies,
         resumeText: candidate.resume_text ?? "",
-      }),
+      },
     });
-
-    if (!res.ok) throw new Error("AI analysis failed");
-    const result = await res.json();
 
     await context.supabase.from("candidate_analyses").insert({
       candidate_id: candidate.id,
