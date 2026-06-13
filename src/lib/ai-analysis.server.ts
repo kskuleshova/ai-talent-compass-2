@@ -1,5 +1,7 @@
 // Server-only Lovable AI gateway call for candidate analysis (Ukrainian).
  
+import { GoogleAuth } from "google-auth-library";
+
 type Vacancy = {
   title: string;
   job_description?: string | null;
@@ -10,9 +12,9 @@ type Vacancy = {
   test_task?: string | null;
   historical_feedback?: string | null;
 };
- 
+
 export type Verdict = "Strong yes" | "Yes" | "Maybe Yes" | "No" | "Strong No";
- 
+
 export type AnalysisResult = {
   matches: string[];
   partial_matches: string[];
@@ -33,75 +35,72 @@ export type AnalysisResult = {
   recommendation: Verdict;
   model: string;
 };
- 
+
 const MODEL = "gemini-2.0-flash-lite";
- 
+
 const SYSTEM = `Ти — AI-асистент рекрутера. Аналізуй резюме кандидата СУВОРО відповідно до вакансії.
- 
+
 Правила:
 - Відповідай ВИКЛЮЧНО українською мовою.
 - Використовуй ТІЛЬКИ інформацію з резюме та опису вакансії. Нічого не вигадуй.
-- Якщо інформація відсутня або неоднозначна — клас "частково" або "не відповідає". Не додумуй за кандидата.
-- Будь критичним, без води, без зайвих слів.
-- Вихід — ВИКЛЮЧНО валідний JSON за вказаною схемою.`;
- 
+- Якщо інформація відсутня або неоднозначна — клас "частково" або "не відповідає".
+- Будь критичним, без води.
+- Вихід — ВИКЛЮЧНО валідний JSON.`;
+
 function buildPrompt(v: Vacancy, resumeText: string) {
   return `${SYSTEM}
- 
+
 ВАКАНСІЯ
 Назва: ${v.title}
- 
+
 Опис вакансії:
 ${v.job_description || "(немає)"}
- 
-Бриф від наймаючого менеджера:
+
+Бриф:
 ${v.hiring_manager_brief || "(немає)"}
- 
+
 Обов'язкові вимоги:
 ${v.must_have || "(немає)"}
- 
+
 Бажані вимоги:
 ${v.nice_to_have || "(немає)"}
- 
-Скринінгові питання (контекст):
+
+Скринінгові питання:
 ${v.screening_questions || "(немає)"}
- 
-Тестове завдання:
+
+Тестове:
 ${v.test_task || "(немає)"}
- 
-Історичний фідбек по попередніх кандидатах:
+
+Історичний фідбек:
 ${v.historical_feedback || "(немає)"}
- 
+
 РЕЗЮМЕ:
 """
-${resumeText.slice(0, 15000) || "(резюме не вдалось прочитати, проаналізуй на основі вакансії)"}
+${resumeText.slice(0, 15000) || "(резюме не вдалось прочитати)"}
 """
- 
-Поверни ОДИН JSON-об'єкт точно такої структури (без markdown, без коментарів, лише чистий JSON):
+
+Поверни ОДИН JSON-об'єкт точно такої структури:
 {
-  "matches": ["вимога яка прямо покрита в резюме"],
-  "partial_matches": ["вимога де є сигнали але потрібно уточнити"],
-  "missing": ["вимога яка відсутня в резюме"],
+  "matches": [],
+  "partial_matches": [],
+  "missing": [],
   "summary": {
-    "current_role": "поточна або остання посада",
-    "years_of_experience": "загальний досвід",
-    "industries": ["галузь 1", "галузь 2"],
-    "languages": ["мова 1", "мова 2"],
-    "leadership_experience": "є / немає / є ознаки",
-    "profile_summary": "коротке загальне позиціонування кандидата",
-    "strengths": ["сильна сторона 1", "сильна сторона 2"],
+    "current_role": "",
+    "years_of_experience": "",
+    "industries": [],
+    "languages": [],
+    "leadership_experience": "",
+    "profile_summary": "",
+    "strengths": [],
     "overall_match_percent": 72,
-    "next_steps": "конкретні наступні дії для рекрутера"
+    "next_steps": ""
   },
-  "risks": ["ризик або питання що потребує уточнення"],
-  "suggested_questions": ["Питання 1?", "Питання 2?"],
+  "risks": [],
+  "suggested_questions": [],
   "recommendation": "Strong yes"
+}`;
 }
- 
-Поле "recommendation" — лише одне з: "Strong yes", "Yes", "Maybe Yes", "No", "Strong No".
-Поле "overall_match_percent" — ціле число від 0 до 100.`;
-}
- 
+
 export async function analyzeCandidate({
   vacancy,
   resumeText,
@@ -109,51 +108,72 @@ export async function analyzeCandidate({
   vacancy: Vacancy;
   resumeText: string;
 }): Promise<AnalysisResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  console.log("Gemini apiKey present:", !!apiKey, "length:", apiKey?.length);
-  if (!apiKey) throw new Error("GEMINI_API_KEY not set");
- 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: buildPrompt(vacancy, resumeText) }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
-      }),
-    }
-  );
- 
-  console.log("Gemini response status:", res.status);
- 
-  if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    console.error("Gemini error response:", t.slice(0, 500));
-    throw new Error(`Gemini error ${res.status}: ${t.slice(0, 300)}`);
+  const projectId = process.env.GCP_PROJECT_ID;
+  const saKey = process.env.GCP_SERVICE_ACCOUNT_KEY;
+
+  if (!projectId) throw new Error("GCP_PROJECT_ID not set");
+  if (!saKey) throw new Error("GCP_SERVICE_ACCOUNT_KEY not set");
+
+  const credentials = JSON.parse(saKey);
+
+  const auth = new GoogleAuth({
+    credentials,
+    scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+  });
+
+  const client = await auth.getClient();
+  const accessToken = await client.getAccessToken();
+
+  const endpoint = `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/${MODEL}:generateContent`;
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: buildPrompt(vacancy, resumeText) }],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 4096,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Vertex AI error ${response.status}: ${err}`);
   }
- 
-  const json = await res.json();
-  const rawText: string = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+
+  const json = await response.json();
+  const rawText = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+
   const cleaned = rawText.replace(/```json|```/g, "").trim();
- 
+
   let parsed: any;
   try {
     parsed = JSON.parse(cleaned);
-  } catch {
-    throw new Error("Gemini повернув не-JSON відповідь");
+  } catch (e) {
+    throw new Error("Vertex AI повернув не-JSON відповідь");
   }
- 
+
   const allowed: Verdict[] = ["Strong yes", "Yes", "Maybe Yes", "No", "Strong No"];
   const recommendation: Verdict = allowed.includes(parsed.recommendation)
     ? parsed.recommendation
     : "Maybe Yes";
- 
+
   const summary = parsed.summary ?? {};
-  const rawPercent = summary.overall_match_percent;
-  const n = Number(rawPercent);
-  summary.overall_match_percent = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 0;
- 
+  const n = Number(summary.overall_match_percent);
+  summary.overall_match_percent = Number.isFinite(n)
+    ? Math.max(0, Math.min(100, Math.round(n)))
+    : 0;
+
   return {
     matches: arr(parsed.matches),
     partial_matches: arr(parsed.partial_matches),
@@ -165,8 +185,7 @@ export async function analyzeCandidate({
     model: MODEL,
   };
 }
- 
+
 function arr(v: any): string[] {
-  if (!Array.isArray(v)) return [];
-  return v.filter((x) => typeof x === "string" && x.trim().length > 0);
+  return Array.isArray(v) ? v.filter((x) => typeof x === "string" && x.trim()) : [];
 }
