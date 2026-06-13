@@ -28,7 +28,10 @@ function VacancyDetail() {
   const mutation = useMutation({
     mutationFn: async (vars: { name: string; file: File }) => {
       const buf = await vars.file.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      const bytes = new Uint8Array(buf);
+let binary = "";
+for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+const base64 = btoa(binary);
       return upload({ data: {
         vacancy_id: id, name: vars.name, filename: vars.file.name,
         mime: vars.file.type || "application/octet-stream", base64,
