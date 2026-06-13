@@ -34,7 +34,7 @@ export type AnalysisResult = {
   model: string;
 };
 
-const MODEL = "gemini-1.5-flash";
+const MODEL = "gemini-3.5-flash";
 
 const SYSTEM = `Ти — AI-асистент рекрутера. Аналізуй резюме кандидата СУВОРО відповідно до вакансії.
 
@@ -109,7 +109,7 @@ export async function analyzeCandidate({
   vacancy: Vacancy;
   resumeText: string;
 }): Promise<AnalysisResult> {
-  const apiKey = process.env.GEMINI_API_KEY || "AQ.Ab8RN6I3ENIDxBXorR_ouo4kDb07XW92DmrTj-fFRQ3oaLnRcw";
+  const apiKey = process.env.GEMINI_API_KEY || AQ.Ab8RN6I3ENIDxBXorR_ouo4kDb07XW92DmrTj-fFRQ3oaLnRcw;
 if (!apiKey) throw new Error("GEMINI_API_KEY not set");
 
   const res = await fetch(
