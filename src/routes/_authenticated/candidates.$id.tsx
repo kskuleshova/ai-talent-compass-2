@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { getCandidate, addNote, reanalyzeCandidate, updateAnalysis } from "@/lib/candidates.functions";
 import { ArrowLeft, FileText, Sparkles, CheckCircle2, AlertTriangle, XCircle, RefreshCw, Loader2 } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
+import { toast } from "sonner";і
 import { RecommendationBadge } from "./vacancies.$id";
 
 export const Route = createFileRoute("/_authenticated/candidates/$id")({
