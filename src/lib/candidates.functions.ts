@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { analyzeCandidate } from "./ai-analysis.server";
+import { parseResumeFromBase64 } from "@/lib/parse-resume.server";
 
 // ------------------------------
 // GET CANDIDATE
@@ -78,25 +79,10 @@ export const uploadCandidate = createServerFn({ method: "POST" })
       .upload(path, buf, { contentType: data.mime, upsert: false });
     if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
 
-    // Extract text via API
+    // Extract text directly (no HTTP round-trip)
     let resumeText = "";
     try {
-      const baseUrl =
-        process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}`
-          : "http://localhost:3000";
-
-      const response = await fetch(`${baseUrl}/api/parse-resume`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          base64: data.base64,
-          ext,
-        }),
-      });
-
-      const { text } = await response.json();
-      resumeText = text || "";
+      resumeText = await parseResumeFromBase64(data.base64, ext);
     } catch (e) {
       console.error("Resume parsing failed", e);
     }
@@ -239,22 +225,7 @@ export const reanalyzeCandidate = createServerFn({ method: "POST" })
         const buf = Buffer.from(await file.arrayBuffer());
         const ext = candidate.resume_filename?.split(".").pop()?.toLowerCase() ?? "pdf";
 
-        const baseUrl =
-          process.env.VERCEL_URL
-            ? `https://${process.env.VERCEL_URL}`
-            : "http://localhost:3000";
-
-        const response = await fetch(`${baseUrl}/api/parse-resume`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            base64: buf.toString("base64"),
-            ext,
-          }),
-        });
-
-        const { text } = await response.json();
-        resumeText = text || "";
+        resumeText = await parseResumeFromBase64(buf.toString("base64"), ext);
 
         await supabase
           .from("candidates")
