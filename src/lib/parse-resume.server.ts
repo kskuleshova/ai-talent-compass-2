@@ -8,15 +8,17 @@ export async function parseResumeFromBase64(
 
   if (ext === "pdf") {
     try {
-      // pdfjs-dist is already in ssr.noExternal — safe to use
       const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-      pdfjsLib.GlobalWorkerOptions.workerSrc = "";
+
+      // Disable worker entirely — required for Node.js / serverless environments
+      pdfjsLib.GlobalWorkerOptions.workerSrc = false as any;
 
       const loadingTask = pdfjsLib.getDocument({
         data: new Uint8Array(buf),
         useWorkerFetch: false,
         isEvalSupported: false,
         useSystemFonts: true,
+        disableFontFace: true,
       });
 
       const pdf = await loadingTask.promise;
@@ -31,7 +33,7 @@ export async function parseResumeFromBase64(
         pages.push(text);
       }
 
-      return pages.join("\n");
+      return pages.join("\n").trim();
     } catch (e) {
       console.error("PDF parse error:", e);
       return "";
