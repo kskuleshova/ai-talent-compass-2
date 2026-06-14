@@ -81,7 +81,9 @@ export const uploadCandidate = createServerFn({ method: "POST" })
     // Extract text via API
     let resumeText = "";
     try {
-      const response = await fetch(`${process.env.VERCEL_URL}/api/parse-resume`, {
+      const baseUrl = new URL(context.request.url).origin;
+
+      const response = await fetch(`${baseUrl}/api/parse-resume`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -234,7 +236,9 @@ export const reanalyzeCandidate = createServerFn({ method: "POST" })
         const buf = Buffer.from(await file.arrayBuffer());
         const ext = candidate.resume_filename?.split(".").pop()?.toLowerCase() ?? "pdf";
 
-        const response = await fetch(`${process.env.VERCEL_URL}/api/parse-resume`, {
+        const baseUrl = new URL(context.request.url).origin;
+
+        const response = await fetch(`${baseUrl}/api/parse-resume`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
