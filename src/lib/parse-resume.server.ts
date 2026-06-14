@@ -8,8 +8,11 @@ export async function parseResumeFromBase64(
 
   if (ext === "pdf") {
     try {
-      const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-      pdfjsLib.GlobalWorkerOptions.workerSrc = false as any;
+      // pdfjs-dist v4 — correct import path
+      const pdfjsLib = await import("pdfjs-dist");
+
+      // Disable worker for Node.js / serverless
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "" as any;
 
       const loadingTask = pdfjsLib.getDocument({
         data: new Uint8Array(buf),
