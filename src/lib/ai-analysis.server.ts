@@ -131,14 +131,19 @@ if (!apiKey) throw new Error("GEMINI_API_KEY not set");
 
   const json = await res.json();
   const rawText: string = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
-  const cleaned = rawText.replace(/```json|```/g, "").trim();
+  // Extract JSON object from response — Gemini sometimes wraps it in text
+const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+const cleaned = jsonMatch
+  ? jsonMatch[0]
+  : rawText.replace(/```json|```/g, "").trim();
 
-  let parsed: any;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch {
-    throw new Error("Gemini повернув не-JSON відповідь");
-  }
+let parsed: any;
+try {
+  parsed = JSON.parse(cleaned);
+} catch {
+  console.error("Gemini raw response:", rawText.slice(0, 500));
+  throw new Error("Gemini повернув не-JSON відповідь");
+}
 
   const allowed: Verdict[] = ["Strong yes", "Yes", "Maybe Yes", "No", "Strong No"];
   const recommendation: Verdict = allowed.includes(parsed.recommendation)
