@@ -1,361 +1,308 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
-import { getVacancy } from "@/lib/vacancies.functions";
-import { uploadCandidate, deleteCandidate } from "@/lib/candidates.functions";
-import { ArrowLeft, Upload, FileText, Loader2, ChevronRight, Trash2, ChevronDown, ChevronUp } from "lucide-react";
-import { useRef, useState } from "react";
-import { toast } from "sonner";
-import { formatDistanceToNow } from "date-fns";
+import { createServerFn } from "@tanstack/react-start";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { z } from "zod";
+import { analyzeCandidate } from "./ai-analysis.server";
+import { parseResumeFromBase64 } from "@/lib/parse-resume.server";
 
-export const Route = createFileRoute("/_authenticated/vacancies/$id")({
-  head: () => ({ meta: [{ title: "Vacancy — Hirelens" }] }),
-  component: VacancyDetail,
+// ------------------------------
+// GET CANDIDATE
+// ------------------------------
+export const getCandidate = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: { id: string }) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: candidate, error } = await context.supabase
+      .from("candidates")
+      .select("*, vacancies(id, title)")
+      .eq("id", data.id)
+      .single();
+    if (error) throw new Error(error.message);
+
+    const { data: analysis } = await context.supabase
+      .from("candidate_analyses")
+      .select("*")
+      .eq("candidate_id", data.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const { data: notes } = await context.supabase
+      .from("recruiter_notes")
+      .select("*")
+      .eq("candidate_id", data.id)
+      .order("created_at", { ascending: false });
+
+    let resume_url: string | null = null;
+    if (candidate.resume_path) {
+      const { data: signed } = await context.supabase.storage
+        .from("resumes")
+        .createSignedUrl(candidate.resume_path, 60 * 60);
+      resume_url = signed?.signedUrl ?? null;
+    }
+
+    return { candidate, analysis, notes: notes ?? [], resume_url };
+  });
+
+// ------------------------------
+// UPLOAD CANDIDATE
+// ------------------------------
+const UploadSchema = z.object({
+  vacancy_id: z.string().uuid(),
+  name: z.string().trim().min(1).max(200),
+  filename: z.string().min(1).max(300),
+  mime: z.string().min(1).max(200),
+  base64: z.string().min(1),
 });
 
-function VacancyDetail() {
-  const { id } = Route.useParams();
-  const fn = useServerFn(getVacancy);
-  const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ["vacancy", id], queryFn: () => fn({ data: { id } }) });
+export const uploadCandidate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: unknown) => UploadSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
 
-  const upload = useServerFn(uploadCandidate);
-  const deleteFn = useServerFn(deleteCandidate);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
-  const [candName, setCandName] = useState("");
-  const [showUpload, setShowUpload] = useState(false);
+    const { data: vacancy, error: vErr } = await supabase
+      .from("vacancies")
+      .select("*")
+      .eq("id", data.vacancy_id)
+      .single();
+    if (vErr || !vacancy) throw new Error("Vacancy not found");
 
-  // — Single delete (inline confirm) —
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+    const buf = Buffer.from(data.base64, "base64");
+    if (buf.length > 10 * 1024 * 1024) throw new Error("File too large (max 10 MB)");
 
-  // — Bulk select —
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [showBulkConfirm, setShowBulkConfirm] = useState(false);
-  const [bulkDeleting, setBulkDeleting] = useState(false);
+    const ext = data.filename.split(".").pop()?.toLowerCase() ?? "bin";
+    if (!["pdf", "docx"].includes(ext)) throw new Error("Only PDF or DOCX files are supported.");
 
-  const mutation = useMutation({
-    mutationFn: async (vars: { name: string; file: File }) => {
-      const buf = await vars.file.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let binary = "";
-      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-      const base64 = btoa(binary);
-      return upload({ data: {
-        vacancy_id: id, name: vars.name, filename: vars.file.name,
-        mime: vars.file.type || "application/octet-stream", base64,
-      } });
-    },
-    onSuccess: () => {
-      toast.success("Candidate uploaded and analyzed");
-      setShowUpload(false); setCandName("");
-      if (fileRef.current) fileRef.current.value = "";
-      qc.invalidateQueries({ queryKey: ["vacancy", id] });
-    },
-    onError: (e: any) => toast.error(e.message ?? "Upload failed"),
-    onSettled: () => setBusy(false),
-  });
+    const path = `${userId}/${data.vacancy_id}/${crypto.randomUUID()}.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from("resumes")
+      .upload(path, buf, { contentType: data.mime, upsert: false });
+    if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
 
-  const deleteMut = useMutation({
-    mutationFn: (candidateId: string) => deleteFn({ data: { id: candidateId } }),
-    onSuccess: () => {
-      toast.success("Кандидата видалено");
-      setConfirmDeleteId(null);
-      qc.invalidateQueries({ queryKey: ["vacancy", id] });
-    },
-    onError: (e: any) => toast.error(e.message ?? "Помилка видалення"),
-  });
-
-  if (!data) {
-    return <div className="mx-auto max-w-6xl px-6 py-10"><div className="h-8 w-64 animate-pulse rounded bg-muted" /></div>;
-  }
-  const { vacancy, candidates } = data;
-
-  const allIds = candidates.map((c: any) => c.id);
-  const allSelected = allIds.length > 0 && allIds.every((cid: string) => selected.has(cid));
-  const someSelected = selected.size > 0;
-
-  const toggleAll = () => {
-    if (allSelected) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(allIds));
+    // Extract text directly (no HTTP round-trip)
+    let resumeText = "";
+    try {
+      resumeText = await parseResumeFromBase64(data.base64, ext);
+    } catch (e) {
+      console.error("Resume parsing failed", e);
     }
-  };
 
-  const toggleOne = (cid: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(cid)) next.delete(cid);
-      else next.add(cid);
-      return next;
-    });
-  };
+    const { data: candidate, error: cErr } = await supabase
+      .from("candidates")
+      .insert({
+        owner_id: userId,
+        vacancy_id: data.vacancy_id,
+        name: data.name,
+        resume_path: path,
+        resume_filename: data.filename,
+        resume_text: resumeText || null,
+        status: "analyzing",
+      })
+      .select()
+      .single();
+    if (cErr) throw new Error(cErr.message);
 
-  const handleBulkDelete = async () => {
-    setBulkDeleting(true);
-    const ids = Array.from(selected);
-    let failed = 0;
-    for (const cid of ids) {
-      try {
-        await deleteFn({ data: { id: cid } });
-      } catch {
-        failed++;
+    await supabase
+      .from("vacancies")
+      .update({ last_activity_at: new Date().toISOString() })
+      .eq("id", data.vacancy_id);
+
+    // Run AI analysis directly
+    try {
+      const result = await analyzeCandidate({
+        vacancy,
+        resumeText: resumeText || "",
+      });
+
+      await supabase.from("candidate_analyses").insert({
+        candidate_id: candidate.id,
+        owner_id: userId,
+        matches: result.matches,
+        partial_matches: result.partial_matches,
+        missing: result.missing,
+        summary: result.summary,
+        risks: result.risks,
+        suggested_questions: result.suggested_questions,
+        recommendation: result.recommendation,
+        model: result.model,
+      });
+
+      await supabase
+        .from("candidates")
+        .update({ status: "analyzed" })
+        .eq("id", candidate.id);
+    } catch (e) {
+      console.error("AI analysis failed", e);
+      await supabase
+        .from("candidates")
+        .update({ status: "analysis_failed" })
+        .eq("id", candidate.id);
+    }
+
+    return { id: candidate.id };
+  });
+
+// ------------------------------
+// ADD NOTE
+// ------------------------------
+export const addNote = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: unknown) =>
+    z
+      .object({
+        candidate_id: z.string().uuid(),
+        body: z.string().trim().min(1).max(5000),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase
+      .from("recruiter_notes")
+      .insert({
+        candidate_id: data.candidate_id,
+        owner_id: context.userId,
+        body: data.body,
+      });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+// ------------------------------
+// UPDATE ANALYSIS (EXTRA NOTES)
+// ------------------------------
+export const updateAnalysis = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: unknown) =>
+    z
+      .object({
+        candidate_id: z.string().uuid(),
+        extra: z.string().trim().min(1).max(5000),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+
+    const { error } = await supabase
+      .from("candidate_analyses")
+      .update({
+        extra_notes: data.extra,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("candidate_id", data.candidate_id);
+
+    if (error) throw new Error(error.message);
+
+    return { ok: true };
+  });
+
+// ------------------------------
+// REANALYZE CANDIDATE
+// ------------------------------
+export const reanalyzeCandidate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: { id: string }) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+
+    // 1. Load candidate
+    const { data: candidate, error } = await supabase
+      .from("candidates")
+      .select("*, vacancies(*)")
+      .eq("id", data.id)
+      .single();
+    if (error || !candidate) throw new Error("Candidate not found");
+
+    let resumeText = candidate.resume_text ?? "";
+
+    // 2. If resume_text is empty — re-extract
+    if (!resumeText && candidate.resume_path) {
+      const { data: file } = await supabase.storage
+        .from("resumes")
+        .download(candidate.resume_path);
+
+      if (file) {
+        const buf = Buffer.from(await file.arrayBuffer());
+        const ext = candidate.resume_filename?.split(".").pop()?.toLowerCase() ?? "pdf";
+
+        resumeText = await parseResumeFromBase64(buf.toString("base64"), ext);
+
+        await supabase
+          .from("candidates")
+          .update({ resume_text: resumeText })
+          .eq("id", candidate.id);
       }
     }
-    setBulkDeleting(false);
-    setSelected(new Set());
-    setShowBulkConfirm(false);
-    await qc.invalidateQueries({ queryKey: ["vacancy", id] });
-    if (failed === 0) toast.success(`Видалено ${ids.length} кандидат${ids.length === 1 ? "а" : "ів"}`);
-    else toast.error(`Видалено ${ids.length - failed} з ${ids.length}. Помилок: ${failed}`);
-  };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const file = fileRef.current?.files?.[0];
-    if (!file) { toast.error("Choose a PDF or DOCX file"); return; }
-    if (!candName.trim()) { toast.error("Enter the candidate's name"); return; }
-    setBusy(true);
-    mutation.mutate({ name: candName.trim(), file });
-  };
+    console.log("Reanalyze: resume_text length:", resumeText.length);
 
-  return (
-    <div className="mx-auto max-w-7xl px-6 py-10">
-      <Link to="/dashboard" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" /> Vacancies
-      </Link>
+    // 3. Update status
+    await supabase
+      .from("candidates")
+      .update({ status: "reanalyzing" })
+      .eq("id", candidate.id);
 
-      <header className="mt-4 flex items-start justify-between gap-6">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{vacancy.title}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Created {new Date(vacancy.created_at).toLocaleDateString()} · {candidates.length} candidate{candidates.length === 1 ? "" : "s"}
-          </p>
-        </div>
-        <button
-          onClick={() => setShowUpload((s) => !s)}
-          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-        >
-          <Upload className="h-4 w-4" /> Upload candidate
-        </button>
-      </header>
+    // 4. Run AI analysis
+    const result = await analyzeCandidate({
+      vacancy: candidate.vacancies,
+      resumeText,
+    });
 
-      {showUpload && (
-        <form onSubmit={handleSubmit} className="mt-6 rounded-xl border border-border bg-card p-5">
-          <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">Candidate name</label>
-              <input
-                value={candName} onChange={(e) => setCandName(e.target.value)} maxLength={200}
-                placeholder="e.g. Jane Doe"
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">Resume (PDF or DOCX)</label>
-              <input ref={fileRef} type="file" accept=".pdf,.docx" className="block text-sm" />
-            </div>
-          </div>
-          <div className="mt-4 flex justify-end gap-2">
-            <button type="button" onClick={() => setShowUpload(false)} className="rounded-md px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-accent">Cancel</button>
-            <button type="submit" disabled={busy} className="inline-flex items-center gap-2 rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-              {busy && <Loader2 className="h-4 w-4 animate-spin" />} Upload & analyze
-            </button>
-          </div>
-        </form>
-      )}
+    // 5. Save new analysis
+    await supabase.from("candidate_analyses").insert({
+      candidate_id: candidate.id,
+      owner_id: userId,
+      matches: result.matches,
+      partial_matches: result.partial_matches,
+      missing: result.missing,
+      summary: result.summary,
+      risks: result.risks,
+      suggested_questions: result.suggested_questions,
+      recommendation: result.recommendation,
+      model: result.model,
+    });
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[3fr_2fr]">
-        <section>
-          {/* Candidates header with select-all + bulk toolbar */}
-          <div className="mb-3 flex min-h-[28px] items-center gap-3">
-            {candidates.length > 0 && (
-              <input
-                type="checkbox"
-                checked={allSelected}
-                ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
-                onChange={toggleAll}
-                className="h-4 w-4 cursor-pointer rounded border-border accent-primary"
-                title="Виділити всіх"
-              />
-            )}
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Candidates
-            </h2>
+    // 6. Update status
+    await supabase
+      .from("candidates")
+      .update({ status: "analyzed" })
+      .eq("id", candidate.id);
 
-            {someSelected && (
-              <div className="ml-auto flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Обрано: {selected.size}</span>
-                {showBulkConfirm ? (
-                  <>
-                    <span className="text-xs font-medium text-destructive">
-                      Видалити {selected.size}?
-                    </span>
-                    <button
-                      onClick={handleBulkDelete}
-                      disabled={bulkDeleting}
-                      className="inline-flex items-center gap-1 rounded bg-destructive px-2.5 py-1 text-xs font-medium text-white hover:bg-destructive/90 disabled:opacity-50"
-                    >
-                      {bulkDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Так, видалити"}
-                    </button>
-                    <button
-                      onClick={() => setShowBulkConfirm(false)}
-                      disabled={bulkDeleting}
-                      className="rounded bg-muted px-2.5 py-1 text-xs font-medium hover:bg-accent disabled:opacity-50"
-                    >
-                      Скасувати
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      onClick={() => setShowBulkConfirm(true)}
-                      className="inline-flex items-center gap-1 rounded bg-destructive/10 px-2.5 py-1 text-xs font-medium text-destructive hover:bg-destructive/20"
-                    >
-                      <Trash2 className="h-3 w-3" /> Видалити
-                    </button>
-                    <button
-                      onClick={() => setSelected(new Set())}
-                      className="rounded bg-muted px-2.5 py-1 text-xs font-medium hover:bg-accent"
-                    >
-                      Скасувати
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+    return { ok: true };
+  });
 
-          {candidates.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border bg-card/40 p-10 text-center">
-              <p className="text-sm text-muted-foreground">No candidates yet. Upload a resume to get started.</p>
-            </div>
-          ) : (
-            <ul className="divide-y divide-border rounded-xl border border-border bg-card">
-              {candidates.map((c: any) => {
-                const isSelected = selected.has(c.id);
-                return (
-                  <li
-                    key={c.id}
-                    className={`flex items-center gap-2 px-5 py-4 transition-colors hover:bg-accent/40 ${isSelected ? "bg-primary/5" : ""}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggleOne(c.id)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-primary"
-                    />
+// ------------------------------
+// DELETE CANDIDATE
+// ------------------------------
+export const deleteCandidate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
 
-                    <Link to="/candidates/$id" params={{ id: c.id }} className="flex min-w-0 flex-1 items-center gap-3">
-                      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent text-xs font-medium text-accent-foreground">
-                        {c.name.split(" ").map((p: string) => p[0]).slice(0,2).join("")}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{c.name}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          <FileText className="mr-1 inline h-3 w-3" />
-                          {c.resume_filename ?? "—"} · {formatDistanceToNow(new Date(c.created_at), { addSuffix: true })}
-                        </p>
-                      </div>
-                    </Link>
+    // Get resume path to delete from storage
+    const { data: candidate } = await supabase
+      .from("candidates")
+      .select("resume_path")
+      .eq("id", data.id)
+      .eq("owner_id", userId)
+      .single();
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      <RecommendationBadge value={c.latest_analysis?.recommendation} status={c.status} />
-                      <Link to="/candidates/$id" params={{ id: c.id }}>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                      </Link>
-                      {confirmDeleteId === c.id ? (
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => deleteMut.mutate(c.id)}
-                            disabled={deleteMut.isPending}
-                            className="rounded bg-destructive px-2 py-1 text-xs font-medium text-white hover:bg-destructive/90"
-                          >
-                            {deleteMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Так"}
-                          </button>
-                          <button
-                            onClick={() => setConfirmDeleteId(null)}
-                            className="rounded bg-muted px-2 py-1 text-xs font-medium hover:bg-accent"
-                          >
-                            Ні
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setConfirmDeleteId(c.id)}
-                          className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                          title="Видалити кандидата"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
+    // Delete from storage if exists
+    if (candidate?.resume_path) {
+      await supabase.storage.from("resumes").remove([candidate.resume_path]);
+    }
 
-        <aside className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Brief</h2>
-          <DetailBlock title="Job description" body={vacancy.job_description} />
-          <DetailBlock title="Hiring manager brief" body={vacancy.hiring_manager_brief} />
-          <DetailBlock title="Must-have" body={vacancy.must_have} />
-          <DetailBlock title="Nice-to-have" body={vacancy.nice_to_have} />
-          <DetailBlock title="Screening questions" body={vacancy.screening_questions} />
-          <DetailBlock title="Test task" body={vacancy.test_task} />
-          <DetailBlock title="Historical feedback" body={vacancy.historical_feedback} />
-        </aside>
-      </div>
-    </div>
-  );
-}
+    // Delete analyses and notes (cascade should handle it, but just in case)
+    await supabase.from("candidate_analyses").delete().eq("candidate_id", data.id);
+    await supabase.from("recruiter_notes").delete().eq("candidate_id", data.id);
 
-function DetailBlock({ title, body }: { title: string; body: string | null }) {
-  const [expanded, setExpanded] = useState(false);
-  if (!body?.trim()) return null;
+    const { error } = await supabase
+      .from("candidates")
+      .delete()
+      .eq("id", data.id)
+      .eq("owner_id", userId);
 
-  const isLong = body.trim().length > 500;
-  const preview = isLong && !expanded ? body.trim().slice(0, 500) + "…" : body.trim();
-
-  return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
-        {isLong && (
-          <button
-            onClick={() => setExpanded((s) => !s)}
-            className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground shrink-0"
-          >
-            {expanded ? <><ChevronUp className="h-3.5 w-3.5" /> Згорнути</> : <><ChevronDown className="h-3.5 w-3.5" /> Розгорнути</>}
-          </button>
-        )}
-      </div>
-      <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{preview}</p>
-    </div>
-  );
-}
-
-export function RecommendationBadge({ value, status }: { value?: string | null; status?: string }) {
-  if (status === "analyzing") {
-    return <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2.5 py-0.5 text-xs font-medium text-accent-foreground"><Loader2 className="h-3 w-3 animate-spin" /> Аналізуємо</span>;
-  }
-  if (status === "analysis_failed") {
-    return <span className="rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive">Помилка аналізу</span>;
-  }
-  if (!value) return <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">Очікує</span>;
-  const map: Record<string, string> = {
-    "Strong yes": "bg-success/15 text-success border border-success/30",
-    "Yes": "bg-success/10 text-success border border-success/20",
-    "Maybe Yes": "bg-warning/15 text-warning-foreground border border-warning/40",
-    "No": "bg-destructive/10 text-destructive border border-destructive/30",
-    "Strong No": "bg-destructive/20 text-destructive border border-destructive/40",
-    "Strong Match": "bg-success/15 text-success border border-success/30",
-    "Moderate Match": "bg-warning/15 text-warning-foreground border border-warning/40",
-    "Weak Match": "bg-destructive/10 text-destructive border border-destructive/30",
-  };
-  return <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${map[value] ?? "bg-muted"}`}>{value}</span>;
-}
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
