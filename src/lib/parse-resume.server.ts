@@ -8,15 +8,16 @@ export async function parseResumeFromBase64(
 
   if (ext === "pdf") {
     try {
-      const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      // Import both the lib and the worker — worker must be imported
+      // so pdfjs can find it without a separate workerSrc URL
+      const [pdfjsLib] = await Promise.all([
+        import("pdfjs-dist/legacy/build/pdf.mjs"),
+        import("pdfjs-dist/legacy/build/pdf.worker.mjs"),
+      ]);
 
-      // In Node.js we run without a worker — point workerSrc to the
-      // legacy worker file so pdfjs doesn't throw "no workerSrc" error
-      const workerPath = new URL(
-        "pdfjs-dist/legacy/build/pdf.worker.mjs",
-        import.meta.url
-      ).href;
-      pdfjsLib.GlobalWorkerOptions.workerSrc = workerPath;
+      // After importing the worker module, pdfjs registers it internally
+      // Set workerSrc to empty string to use the already-loaded worker
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "";
 
       const loadingTask = pdfjsLib.getDocument({
         data: new Uint8Array(buf),
