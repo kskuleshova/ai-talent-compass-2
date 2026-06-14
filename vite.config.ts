@@ -5,6 +5,7 @@ export default defineConfig({
   },
   nitro: {
     preset: "vercel",
+    bundledDependencies: ["pdfjs-dist", "mammoth"],
   },
   ssr: {
     noExternal: ["openai", "pdfjs-dist", "mammoth"]
