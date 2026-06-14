@@ -1,8 +1,10 @@
+// PURE COMMONJS — VITE WILL IGNORE THIS FILE
+
 const OpenAI = require("openai");
 const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.js");
 const { createCanvas } = require("canvas");
 
-// Вказуємо шлях до воркера pdfjs
+// pdfjs worker
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "pdfjs-dist/legacy/build/pdf.worker.js";
 
