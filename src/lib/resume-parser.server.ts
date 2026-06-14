@@ -1,4 +1,5 @@
-import pdf from "pdf-parse";
+import { PDFDocument } from "pdf-lib";
+import { pdfToPng } from "@react-pdf/png";
 import OpenAI from "openai";
 
 const openai = new OpenAI({
@@ -6,72 +7,63 @@ const openai = new OpenAI({
 });
 
 // ------------------------------
-// MAIN FUNCTION
+// OCR PARSER THAT WORKS ON VERCEL
 // ------------------------------
-export async function extractResumeText(buffer: Buffer, ext: "pdf" | "docx"): Promise<string> {
-  let text = "";
+export async function extractResumeText(buf: Buffer, ext: "pdf" | "docx"): Promise<string> {
+  // DOCX — простий випадок
+  if (ext === "docx") {
+    const mammoth = await import("mammoth");
+    const { value } = await mammoth.extractRawText({ buffer: buf });
+    return (value ?? "").trim();
+  }
 
-  // 1. Try normal PDF parsing
+  // PDF — складний випадок
   if (ext === "pdf") {
     try {
-      const parsed = await pdf(buffer);
-      text = parsed.text.trim();
+      // 1. Завантажуємо PDF
+      const pdfDoc = await PDFDocument.load(buf);
+      const pageCount = pdfDoc.getPageCount();
 
-      if (text.length > 20) {
-        console.log("[PDF PARSE] Success, length:", text.length);
-        return text;
-      }
+      let fullText = "";
 
-      console.log("[PDF PARSE] Empty, switching to OCR...");
-    } catch (e) {
-      console.log("[PDF PARSE] Failed, switching to OCR...");
-    }
-  }
+      // 2. Обробляємо кожну сторінку окремо
+      for (let i = 0; i < pageCount; i++) {
+        const png = await pdfToPng(buf, {
+          page: i + 1,
+          scale: 2, // якість
+        });
 
-  // 2. DOCX parsing (simple)
-  if (ext === "docx") {
-    try {
-      const mammoth = await import("mammoth");
-      const result = await mammoth.extractRawText({ buffer });
-      text = result.value.trim();
+        const base64 = png.content.toString("base64");
 
-      if (text.length > 20) {
-        console.log("[DOCX PARSE] Success, length:", text.length);
-        return text;
-      }
-
-      console.log("[DOCX PARSE] Empty, switching to OCR...");
-    } catch (e) {
-      console.log("[DOCX PARSE] Failed, switching to OCR...");
-    }
-  }
-
-  // 3. OCR via OpenAI Vision
-  console.log("[OCR] Starting OCR via OpenAI Vision...");
-
-  const base64 = buffer.toString("base64");
-
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "text", text: "Extract all readable text from this resume image/PDF page." },
-          {
-            type: "image_url",
-            image_url: {
-              url: `data:application/${ext};base64,${base64}`,
+        // 3. OCR через OpenAI Vision
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "Extract all readable text from this resume page." },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: `data:image/png;base64,${base64}`,
+                  },
+                },
+              ],
             },
-          },
-        ],
-      },
-    ],
-  });
+          ],
+        });
 
-  const ocrText = response.choices[0].message.content?.trim() ?? "";
+        const pageText = response.choices[0].message.content ?? "";
+        fullText += "\n" + pageText;
+      }
 
-  console.log("[OCR] Extracted length:", ocrText.length);
+      return fullText.trim();
+    } catch (e) {
+      console.error("OCR failed:", e);
+      return "";
+    }
+  }
 
-  return ocrText;
+  return "";
 }
