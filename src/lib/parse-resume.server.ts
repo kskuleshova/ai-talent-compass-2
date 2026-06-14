@@ -8,11 +8,15 @@ export async function parseResumeFromBase64(
 
   if (ext === "pdf") {
     try {
-      // pdfjs-dist v4 — correct import path
-      const pdfjsLib = await import("pdfjs-dist");
+      const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
-      // Disable worker for Node.js / serverless
-      pdfjsLib.GlobalWorkerOptions.workerSrc = "" as any;
+      // In Node.js we run without a worker — point workerSrc to the
+      // legacy worker file so pdfjs doesn't throw "no workerSrc" error
+      const workerPath = new URL(
+        "pdfjs-dist/legacy/build/pdf.worker.mjs",
+        import.meta.url
+      ).href;
+      pdfjsLib.GlobalWorkerOptions.workerSrc = workerPath;
 
       const loadingTask = pdfjsLib.getDocument({
         data: new Uint8Array(buf),
@@ -26,12 +30,9 @@ export async function parseResumeFromBase64(
       console.log("[parse-resume] PDF loaded, pages:", pdf.numPages);
 
       const pages: string[] = [];
-
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        console.log(`[parse-resume] Page ${i} items:`, content.items.length);
-
         const text = content.items
           .map((item: any) => ("str" in item ? item.str : ""))
           .join(" ");
@@ -40,7 +41,6 @@ export async function parseResumeFromBase64(
 
       const result = pages.join("\n").trim();
       console.log("[parse-resume] Total text length:", result.length);
-      console.log("[parse-resume] First 200 chars:", result.slice(0, 200));
       return result;
     } catch (e) {
       console.error("PDF parse error:", e);
