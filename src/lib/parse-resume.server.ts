@@ -1,9 +1,4 @@
-import { createRequire } from "node:module";
 import mammoth from "mammoth";
-
-const require = createRequire(import.meta.url);
-// pdf-parse ships only CJS — use require() to avoid ESM "no default export" error
-const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
 
 export async function parseResumeFromBase64(
   base64: string,
@@ -13,8 +8,30 @@ export async function parseResumeFromBase64(
 
   if (ext === "pdf") {
     try {
-      const data = await pdfParse(buf);
-      return data.text || "";
+      // pdfjs-dist is already in ssr.noExternal — safe to use
+      const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "";
+
+      const loadingTask = pdfjsLib.getDocument({
+        data: new Uint8Array(buf),
+        useWorkerFetch: false,
+        isEvalSupported: false,
+        useSystemFonts: true,
+      });
+
+      const pdf = await loadingTask.promise;
+      const pages: string[] = [];
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const text = content.items
+          .map((item: any) => ("str" in item ? item.str : ""))
+          .join(" ");
+        pages.push(text);
+      }
+
+      return pages.join("\n");
     } catch (e) {
       console.error("PDF parse error:", e);
       return "";
