@@ -7,6 +7,6 @@ export default defineConfig({
     preset: "vercel",
   },
   ssr: {
-    noExternal: ["openai", "pdf2json", "mammoth"]
+    noExternal: ["openai", "pdfjs-dist", "mammoth"]
   }
 });
