@@ -1,50 +1,82 @@
 import OpenAI from "openai";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.js";
 
-export async function extractResumeText(buf: Buffer, ext: "pdf" | "docx"): Promise<string> {
-  // DOCX — простий випадок
+// Вказуємо шлях до воркера pdfjs (обовʼязково!)
+(pdfjsLib as any).GlobalWorkerOptions.workerSrc =
+  "pdfjs-dist/legacy/build/pdf.worker.js";
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
+});
+
+// Конвертація PDF-сторінки у PNG (чистий JS, без canvas)
+async function renderPageToPng(page: any) {
+  const viewport = page.getViewport({ scale: 2 });
+
+  const canvasFactory = new pdfjsLib.NodeCanvasFactory();
+  const canvasAndContext = canvasFactory.create(
+    viewport.width,
+    viewport.height
+  );
+
+  const renderContext = {
+    canvasContext: canvasAndContext.context,
+    viewport,
+    canvasFactory,
+  };
+
+  await page.render(renderContext).promise;
+
+  return canvasAndContext.canvas.toBuffer("image/png");
+}
+
+export async function extractResumeText(
+  buf: Buffer,
+  ext: "pdf" | "docx"
+): Promise<string> {
+  // DOCX
   if (ext === "docx") {
     const mammoth = await import("mammoth");
     const { value } = await mammoth.extractRawText({ buffer: buf });
     return (value ?? "").trim();
   }
 
-  // PDF — OCR через Google Vision
+  // PDF → PNG → OCR
   if (ext === "pdf") {
     try {
-      const apiKey = process.env.GOOGLE_VISION_API_KEY;
-      if (!apiKey) throw new Error("Missing GOOGLE_VISION_API_KEY");
+      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+      let fullText = "";
 
-      const base64 = buf.toString("base64");
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const pngBuffer = await renderPageToPng(page);
+        const base64 = pngBuffer.toString("base64");
 
-      const response = await fetch(
-        `https://vision.googleapis.com/v1/files:annotate?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            requests: [
-              {
-                inputConfig: {
-                  mimeType: "application/pdf",
-                  content: base64,
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "Extract all text from this resume page." },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: `data:image/png;base64,${base64}`,
+                  },
                 },
-                features: [{ type: "DOCUMENT_TEXT_DETECTION" }],
-              },
-            ],
-          }),
-        }
-      );
+              ],
+            },
+          ],
+        });
 
-      const json = await response.json();
+        const pageText = response.choices[0].message.content ?? "";
+        fullText += "\n" + pageText;
+      }
 
-      const text =
-        json?.responses?.[0]?.fullTextAnnotation?.text ??
-        json?.responses?.[0]?.textAnnotations?.[0]?.description ??
-        "";
-
-      return text.trim();
+      return fullText.trim();
     } catch (e) {
-      console.error("Google Vision OCR failed:", e);
+      console.error("OpenAI OCR failed:", e);
       return "";
     }
   }
