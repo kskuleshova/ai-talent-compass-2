@@ -1,14 +1,5 @@
-import { PDFDocument } from "pdf-lib";
-import { pdfToPng } from "@react-pdf/png";
 import OpenAI from "openai";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
-
-// ------------------------------
-// OCR PARSER THAT WORKS ON VERCEL
-// ------------------------------
 export async function extractResumeText(buf: Buffer, ext: "pdf" | "docx"): Promise<string> {
   // DOCX — простий випадок
   if (ext === "docx") {
@@ -17,50 +8,43 @@ export async function extractResumeText(buf: Buffer, ext: "pdf" | "docx"): Promi
     return (value ?? "").trim();
   }
 
-  // PDF — складний випадок
+  // PDF — OCR через Google Vision
   if (ext === "pdf") {
     try {
-      // 1. Завантажуємо PDF
-      const pdfDoc = await PDFDocument.load(buf);
-      const pageCount = pdfDoc.getPageCount();
+      const apiKey = process.env.GOOGLE_VISION_API_KEY;
+      if (!apiKey) throw new Error("Missing GOOGLE_VISION_API_KEY");
 
-      let fullText = "";
+      const base64 = buf.toString("base64");
 
-      // 2. Обробляємо кожну сторінку окремо
-      for (let i = 0; i < pageCount; i++) {
-        const png = await pdfToPng(buf, {
-          page: i + 1,
-          scale: 2, // якість
-        });
-
-        const base64 = png.content.toString("base64");
-
-        // 3. OCR через OpenAI Vision
-        const response = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: "Extract all readable text from this resume page." },
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: `data:image/png;base64,${base64}`,
-                  },
+      const response = await fetch(
+        `https://vision.googleapis.com/v1/files:annotate?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            requests: [
+              {
+                inputConfig: {
+                  mimeType: "application/pdf",
+                  content: base64,
                 },
-              ],
-            },
-          ],
-        });
+                features: [{ type: "DOCUMENT_TEXT_DETECTION" }],
+              },
+            ],
+          }),
+        }
+      );
 
-        const pageText = response.choices[0].message.content ?? "";
-        fullText += "\n" + pageText;
-      }
+      const json = await response.json();
 
-      return fullText.trim();
+      const text =
+        json?.responses?.[0]?.fullTextAnnotation?.text ??
+        json?.responses?.[0]?.textAnnotations?.[0]?.description ??
+        "";
+
+      return text.trim();
     } catch (e) {
-      console.error("OCR failed:", e);
+      console.error("Google Vision OCR failed:", e);
       return "";
     }
   }
