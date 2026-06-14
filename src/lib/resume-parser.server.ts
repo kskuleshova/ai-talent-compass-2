@@ -1,58 +1,77 @@
-// Server-only resume text extractor. Imported from .functions.ts files via
-// dynamic-safe top-level import (these libs are pure JS and Worker-compatible
-// for our cases — pdf-parse + mammoth work in Node/Workers with buffers).
-export async function extractResumeText(buf: Buffer, ext: "pdf" | "docx"): Promise<string> {
+import pdf from "pdf-parse";
+import OpenAI from "openai";
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
+});
+
+// ------------------------------
+// MAIN FUNCTION
+// ------------------------------
+export async function extractResumeText(buffer: Buffer, ext: "pdf" | "docx"): Promise<string> {
+  let text = "";
+
+  // 1. Try normal PDF parsing
   if (ext === "pdf") {
     try {
-      const str = buf.toString("latin1");
-      const texts: string[] = [];
- 
-      const btEtRegex = /BT([\s\S]*?)ET/g;
-      let match;
-      while ((match = btEtRegex.exec(str)) !== null) {
-        const block = match[1];
- 
-        const tRegex = /\(([^)\\]*(?:\\.[^)\\]*)*)\)\s*Tj/g;
-        const tjRegex = /\[((?:[^[\]]*|\[[^[\]]*\])*)\]\s*TJ/g;
- 
-        let m;
-        while ((m = tRegex.exec(block)) !== null) {
-          const t = m[1]
-            .replace(/\\n/g, " ")
-            .replace(/\\r/g, " ")
-            .replace(/\\t/g, " ")
-            .replace(/\\\(/g, "(")
-            .replace(/\\\)/g, ")")
-            .replace(/\\\\/g, "\\");
-          if (t.trim()) texts.push(t);
-        }
-        while ((m = tjRegex.exec(block)) !== null) {
-          const parts = m[1].match(/\(([^)\\]*(?:\\.[^)\\]*)*)\)/g) || [];
-          for (const p of parts) {
-            const t = p.slice(1, -1)
-              .replace(/\\n/g, " ")
-              .replace(/\\\(/g, "(")
-              .replace(/\\\)/g, ")");
-            if (t.trim()) texts.push(t);
-          }
-        }
+      const parsed = await pdf(buffer);
+      text = parsed.text.trim();
+
+      if (text.length > 20) {
+        console.log("[PDF PARSE] Success, length:", text.length);
+        return text;
       }
- 
-      // Filter to only printable ASCII + basic unicode, remove control chars
-      const raw = texts.join(" ").replace(/\s+/g, " ").trim();
-      const clean = raw.replace(/[^\x20-\x7E\u00A0-\u024F\u0400-\u04FF\s]/g, "").trim();
- 
-      console.log("PDF clean text length:", clean.length, "preview:", clean.slice(0, 100));
-      return clean;
+
+      console.log("[PDF PARSE] Empty, switching to OCR...");
     } catch (e) {
-      console.error("PDF parsing failed", e);
-      return "";
+      console.log("[PDF PARSE] Failed, switching to OCR...");
     }
   }
+
+  // 2. DOCX parsing (simple)
   if (ext === "docx") {
-    const mammoth: any = await import("mammoth");
-    const { value } = await mammoth.extractRawText({ buffer: buf });
-    return (value ?? "").trim();
+    try {
+      const mammoth = await import("mammoth");
+      const result = await mammoth.extractRawText({ buffer });
+      text = result.value.trim();
+
+      if (text.length > 20) {
+        console.log("[DOCX PARSE] Success, length:", text.length);
+        return text;
+      }
+
+      console.log("[DOCX PARSE] Empty, switching to OCR...");
+    } catch (e) {
+      console.log("[DOCX PARSE] Failed, switching to OCR...");
+    }
   }
-  return "";
+
+  // 3. OCR via OpenAI Vision
+  console.log("[OCR] Starting OCR via OpenAI Vision...");
+
+  const base64 = buffer.toString("base64");
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Extract all readable text from this resume image/PDF page." },
+          {
+            type: "image_url",
+            image_url: {
+              url: `data:application/${ext};base64,${base64}`,
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+  const ocrText = response.choices[0].message.content?.trim() ?? "";
+
+  console.log("[OCR] Extracted length:", ocrText.length);
+
+  return ocrText;
 }
