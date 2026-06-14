@@ -7,4 +7,9 @@ export default defineConfig({
   nitro: {
     preset: "vercel",
   },
+  build: {
+    rollupOptions: {
+      external: ["openai", "pdfjs-dist"]
+    }
+  }
 });
