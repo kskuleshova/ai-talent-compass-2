@@ -1,9 +1,9 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getVacancy } from "@/lib/vacancies.functions";
-import { uploadCandidate } from "@/lib/candidates.functions";
-import { ArrowLeft, Upload, FileText, Loader2, ChevronRight } from "lucide-react";
+import { uploadCandidate, deleteCandidate } from "@/lib/candidates.functions";
+import { ArrowLeft, Upload, FileText, Loader2, ChevronRight, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -20,18 +20,20 @@ function VacancyDetail() {
   const { data } = useQuery({ queryKey: ["vacancy", id], queryFn: () => fn({ data: { id } }) });
 
   const upload = useServerFn(uploadCandidate);
+  const deleteFn = useServerFn(deleteCandidate);
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [candName, setCandName] = useState("");
   const [showUpload, setShowUpload] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const mutation = useMutation({
     mutationFn: async (vars: { name: string; file: File }) => {
       const buf = await vars.file.arrayBuffer();
       const bytes = new Uint8Array(buf);
-let binary = "";
-for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-const base64 = btoa(binary);
+      let binary = "";
+      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+      const base64 = btoa(binary);
       return upload({ data: {
         vacancy_id: id, name: vars.name, filename: vars.file.name,
         mime: vars.file.type || "application/octet-stream", base64,
@@ -45,6 +47,16 @@ const base64 = btoa(binary);
     },
     onError: (e: any) => toast.error(e.message ?? "Upload failed"),
     onSettled: () => setBusy(false),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (candidateId: string) => deleteFn({ data: { id: candidateId } }),
+    onSuccess: () => {
+      toast.success("Кандидата видалено");
+      setConfirmDeleteId(null);
+      qc.invalidateQueries({ queryKey: ["vacancy", id] });
+    },
+    onError: (e: any) => toast.error(e.message ?? "Помилка видалення"),
   });
 
   if (!data) {
@@ -104,9 +116,6 @@ const base64 = btoa(binary);
               {busy && <Loader2 className="h-4 w-4 animate-spin" />} Upload & analyze
             </button>
           </div>
-          <p className="mt-3 text-xs text-muted-foreground">
-            We'll extract the text, send the vacancy context + resume to AI, and produce a structured analysis.
-          </p>
         </form>
       )}
 
@@ -120,25 +129,50 @@ const base64 = btoa(binary);
           ) : (
             <ul className="divide-y divide-border rounded-xl border border-border bg-card">
               {candidates.map((c: any) => (
-                <li key={c.id}>
-                  <Link to="/candidates/$id" params={{ id: c.id }} className="flex items-center justify-between gap-4 px-5 py-4 hover:bg-accent/40">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent text-xs font-medium text-accent-foreground">
-                        {c.name.split(" ").map((p: string) => p[0]).slice(0,2).join("")}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{c.name}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          <FileText className="mr-1 inline h-3 w-3" />
-                          {c.resume_filename ?? "—"} · {formatDistanceToNow(new Date(c.created_at), { addSuffix: true })}
-                        </p>
-                      </div>
+                <li key={c.id} className="flex items-center justify-between gap-2 px-5 py-4 hover:bg-accent/40">
+                  <Link to="/candidates/$id" params={{ id: c.id }} className="flex min-w-0 flex-1 items-center gap-3">
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent text-xs font-medium text-accent-foreground">
+                      {c.name.split(" ").map((p: string) => p[0]).slice(0,2).join("")}
                     </div>
-                    <div className="flex items-center gap-3">
-                      <RecommendationBadge value={c.latest_analysis?.recommendation} status={c.status} />
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{c.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        <FileText className="mr-1 inline h-3 w-3" />
+                        {c.resume_filename ?? "—"} · {formatDistanceToNow(new Date(c.created_at), { addSuffix: true })}
+                      </p>
                     </div>
                   </Link>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <RecommendationBadge value={c.latest_analysis?.recommendation} status={c.status} />
+                    <Link to="/candidates/$id" params={{ id: c.id }}>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </Link>
+                    {confirmDeleteId === c.id ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => deleteMut.mutate(c.id)}
+                          disabled={deleteMut.isPending}
+                          className="rounded bg-destructive px-2 py-1 text-xs font-medium text-white hover:bg-destructive/90"
+                        >
+                          {deleteMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Так"}
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="rounded bg-muted px-2 py-1 text-xs font-medium hover:bg-accent"
+                        >
+                          Ні
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDeleteId(c.id)}
+                        className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        title="Видалити кандидата"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -161,11 +195,26 @@ const base64 = btoa(binary);
 }
 
 function DetailBlock({ title, body }: { title: string; body: string | null }) {
+  const [expanded, setExpanded] = useState(false);
   if (!body?.trim()) return null;
+
+  const isLong = body.trim().length > 300;
+  const preview = isLong && !expanded ? body.trim().slice(0, 300) + "…" : body.trim();
+
   return (
     <div className="rounded-xl border border-border bg-card p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
-      <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed">{body}</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+        {isLong && (
+          <button
+            onClick={() => setExpanded((s) => !s)}
+            className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground shrink-0"
+          >
+            {expanded ? <><ChevronUp className="h-3.5 w-3.5" /> Згорнути</> : <><ChevronDown className="h-3.5 w-3.5" /> Розгорнути</>}
+          </button>
+        )}
+      </div>
+      <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed">{preview}</p>
     </div>
   );
 }
@@ -184,7 +233,6 @@ export function RecommendationBadge({ value, status }: { value?: string | null; 
     "Maybe Yes": "bg-warning/15 text-warning-foreground border border-warning/40",
     "No": "bg-destructive/10 text-destructive border border-destructive/30",
     "Strong No": "bg-destructive/20 text-destructive border border-destructive/40",
-    // legacy
     "Strong Match": "bg-success/15 text-success border border-success/30",
     "Moderate Match": "bg-warning/15 text-warning-foreground border border-warning/40",
     "Weak Match": "bg-destructive/10 text-destructive border border-destructive/30",
