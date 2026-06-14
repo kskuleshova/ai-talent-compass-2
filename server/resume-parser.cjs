@@ -1,85 +1,68 @@
-import OpenAI from "openai";
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.js";
+const OpenAI = require("openai");
+const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.js");
 
-// Вказуємо шлях до воркера pdfjs (обовʼязково!)
-(pdfjsLib as any).GlobalWorkerOptions.workerSrc =
+// Вказуємо шлях до воркера pdfjs
+pdfjsLib.GlobalWorkerOptions.workerSrc =
   "pdfjs-dist/legacy/build/pdf.worker.js";
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Конвертація PDF-сторінки у PNG (чистий JS, без canvas)
-async function renderPageToPng(page: any) {
-  const viewport = page.getViewport({ scale: 2 });
+async function extractPdfText(buffer) {
+  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
 
-  const canvasFactory = new pdfjsLib.NodeCanvasFactory();
-  const canvasAndContext = canvasFactory.create(
-    viewport.width,
-    viewport.height
-  );
+  let fullText = "";
 
-  const renderContext = {
-    canvasContext: canvasAndContext.context,
-    viewport,
-    canvasFactory,
-  };
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 2 });
 
-  await page.render(renderContext).promise;
+    const canvasFactory = new pdfjsLib.NodeCanvasFactory();
+    const { canvas, context } = canvasFactory.create(
+      viewport.width,
+      viewport.height
+    );
 
-  return canvasAndContext.canvas.toBuffer("image/png");
-}
+    await page.render({
+      canvasContext: context,
+      viewport,
+      canvasFactory,
+    }).promise;
 
-export async function extractResumeText(
-  buf: Buffer,
-  ext: "pdf" | "docx"
-): Promise<string> {
-  // DOCX
-  if (ext === "docx") {
-    const mammoth = await import("mammoth");
-    const { value } = await mammoth.extractRawText({ buffer: buf });
-    return (value ?? "").trim();
-  }
+    const png = canvas.toBuffer("image/png");
+    const base64 = png.toString("base64");
 
-  // PDF → PNG → OCR
-  if (ext === "pdf") {
-    try {
-      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-      let fullText = "";
-
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const pngBuffer = await renderPageToPng(page);
-        const base64 = pngBuffer.toString("base64");
-
-        const response = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: [
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Extract text from this resume page." },
             {
-              role: "user",
-              content: [
-                { type: "text", text: "Extract all text from this resume page." },
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: `data:image/png;base64,${base64}`,
-                  },
-                },
-              ],
+              type: "image_url",
+              image_url: { url: `data:image/png;base64,${base64}` },
             },
           ],
-        });
+        },
+      ],
+    });
 
-        const pageText = response.choices[0].message.content ?? "";
-        fullText += "\n" + pageText;
-      }
-
-      return fullText.trim();
-    } catch (e) {
-      console.error("OpenAI OCR failed:", e);
-      return "";
-    }
+    fullText += response.choices[0].message.content + "\n";
   }
 
-  return "";
+  return fullText.trim();
 }
+
+async function extractDocxText() {
+  throw new Error("DOCX parsing not implemented yet");
+}
+
+async function extractResumeText(buffer, ext) {
+  if (ext === "pdf") return extractPdfText(buffer);
+  if (ext === "docx") return extractDocxText(buffer);
+  throw new Error("Unsupported file type");
+}
+
+module.exports = { extractResumeText };
