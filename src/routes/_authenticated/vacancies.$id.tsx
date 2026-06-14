@@ -74,7 +74,7 @@ function VacancyDetail() {
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-10">
+    <div className="mx-auto max-w-7xl px-6 py-10">
       <Link to="/dashboard" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-4 w-4" /> Vacancies
       </Link>
@@ -119,7 +119,8 @@ function VacancyDetail() {
         </form>
       )}
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[2fr_1fr]">
+      {/* Змінено на lg:grid-cols-[3fr_2fr] — Brief займає більше місця */}
+      <div className="mt-8 grid gap-8 lg:grid-cols-[3fr_2fr]">
         <section>
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Candidates</h2>
           {candidates.length === 0 ? (
@@ -179,7 +180,7 @@ function VacancyDetail() {
           )}
         </section>
 
-        <aside className="space-y-4">
+        <aside className="space-y-3">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Brief</h2>
           <DetailBlock title="Job description" body={vacancy.job_description} />
           <DetailBlock title="Hiring manager brief" body={vacancy.hiring_manager_brief} />
@@ -198,11 +199,12 @@ function DetailBlock({ title, body }: { title: string; body: string | null }) {
   const [expanded, setExpanded] = useState(false);
   if (!body?.trim()) return null;
 
-  const isLong = body.trim().length > 300;
-  const preview = isLong && !expanded ? body.trim().slice(0, 300) + "…" : body.trim();
+  // Збільшено preview з 300 до 500 символів
+  const isLong = body.trim().length > 500;
+  const preview = isLong && !expanded ? body.trim().slice(0, 500) + "…" : body.trim();
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
+    <div className="rounded-xl border border-border bg-card p-5">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
         {isLong && (
@@ -214,7 +216,7 @@ function DetailBlock({ title, body }: { title: string; body: string | null }) {
           </button>
         )}
       </div>
-      <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed">{preview}</p>
+      <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{preview}</p>
     </div>
   );
 }
