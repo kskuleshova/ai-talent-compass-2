@@ -1,5 +1,9 @@
-import pdfParse from "pdf-parse";
+import { createRequire } from "node:module";
 import mammoth from "mammoth";
+
+const require = createRequire(import.meta.url);
+// pdf-parse ships only CJS — use require() to avoid ESM "no default export" error
+const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
 
 export async function parseResumeFromBase64(
   base64: string,
