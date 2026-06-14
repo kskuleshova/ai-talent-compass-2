@@ -25,7 +25,14 @@ function VacancyDetail() {
   const [busy, setBusy] = useState(false);
   const [candName, setCandName] = useState("");
   const [showUpload, setShowUpload] = useState(false);
+
+  // — Single delete (inline confirm) —
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // — Bulk select —
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const mutation = useMutation({
     mutationFn: async (vars: { name: string; file: File }) => {
@@ -63,6 +70,46 @@ function VacancyDetail() {
     return <div className="mx-auto max-w-6xl px-6 py-10"><div className="h-8 w-64 animate-pulse rounded bg-muted" /></div>;
   }
   const { vacancy, candidates } = data;
+
+  const allIds = candidates.map((c: any) => c.id);
+  const allSelected = allIds.length > 0 && allIds.every((cid: string) => selected.has(cid));
+  const someSelected = selected.size > 0;
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(allIds));
+    }
+  };
+
+  const toggleOne = (cid: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(cid)) next.delete(cid);
+      else next.add(cid);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    setBulkDeleting(true);
+    const ids = Array.from(selected);
+    let failed = 0;
+    for (const cid of ids) {
+      try {
+        await deleteFn({ data: { id: cid } });
+      } catch {
+        failed++;
+      }
+    }
+    setBulkDeleting(false);
+    setSelected(new Set());
+    setShowBulkConfirm(false);
+    await qc.invalidateQueries({ queryKey: ["vacancy", id] });
+    if (failed === 0) toast.success(`Видалено ${ids.length} кандидат${ids.length === 1 ? "а" : "ів"}`);
+    else toast.error(`Видалено ${ids.length - failed} з ${ids.length}. Помилок: ${failed}`);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,63 +166,135 @@ function VacancyDetail() {
         </form>
       )}
 
-      {/* Змінено на lg:grid-cols-[3fr_2fr] — Brief займає більше місця */}
       <div className="mt-8 grid gap-8 lg:grid-cols-[3fr_2fr]">
         <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Candidates</h2>
+          {/* Candidates header with select-all + bulk toolbar */}
+          <div className="mb-3 flex min-h-[28px] items-center gap-3">
+            {candidates.length > 0 && (
+              <input
+                type="checkbox"
+                checked={allSelected}
+                ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
+                onChange={toggleAll}
+                className="h-4 w-4 cursor-pointer rounded border-border accent-primary"
+                title="Виділити всіх"
+              />
+            )}
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Candidates
+            </h2>
+
+            {someSelected && (
+              <div className="ml-auto flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Обрано: {selected.size}</span>
+                {showBulkConfirm ? (
+                  <>
+                    <span className="text-xs font-medium text-destructive">
+                      Видалити {selected.size}?
+                    </span>
+                    <button
+                      onClick={handleBulkDelete}
+                      disabled={bulkDeleting}
+                      className="inline-flex items-center gap-1 rounded bg-destructive px-2.5 py-1 text-xs font-medium text-white hover:bg-destructive/90 disabled:opacity-50"
+                    >
+                      {bulkDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Так, видалити"}
+                    </button>
+                    <button
+                      onClick={() => setShowBulkConfirm(false)}
+                      disabled={bulkDeleting}
+                      className="rounded bg-muted px-2.5 py-1 text-xs font-medium hover:bg-accent disabled:opacity-50"
+                    >
+                      Скасувати
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setShowBulkConfirm(true)}
+                      className="inline-flex items-center gap-1 rounded bg-destructive/10 px-2.5 py-1 text-xs font-medium text-destructive hover:bg-destructive/20"
+                    >
+                      <Trash2 className="h-3 w-3" /> Видалити
+                    </button>
+                    <button
+                      onClick={() => setSelected(new Set())}
+                      className="rounded bg-muted px-2.5 py-1 text-xs font-medium hover:bg-accent"
+                    >
+                      Скасувати
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
           {candidates.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border bg-card/40 p-10 text-center">
               <p className="text-sm text-muted-foreground">No candidates yet. Upload a resume to get started.</p>
             </div>
           ) : (
             <ul className="divide-y divide-border rounded-xl border border-border bg-card">
-              {candidates.map((c: any) => (
-                <li key={c.id} className="flex items-center justify-between gap-2 px-5 py-4 hover:bg-accent/40">
-                  <Link to="/candidates/$id" params={{ id: c.id }} className="flex min-w-0 flex-1 items-center gap-3">
-                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent text-xs font-medium text-accent-foreground">
-                      {c.name.split(" ").map((p: string) => p[0]).slice(0,2).join("")}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{c.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        <FileText className="mr-1 inline h-3 w-3" />
-                        {c.resume_filename ?? "—"} · {formatDistanceToNow(new Date(c.created_at), { addSuffix: true })}
-                      </p>
-                    </div>
-                  </Link>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <RecommendationBadge value={c.latest_analysis?.recommendation} status={c.status} />
-                    <Link to="/candidates/$id" params={{ id: c.id }}>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    </Link>
-                    {confirmDeleteId === c.id ? (
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => deleteMut.mutate(c.id)}
-                          disabled={deleteMut.isPending}
-                          className="rounded bg-destructive px-2 py-1 text-xs font-medium text-white hover:bg-destructive/90"
-                        >
-                          {deleteMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Так"}
-                        </button>
-                        <button
-                          onClick={() => setConfirmDeleteId(null)}
-                          className="rounded bg-muted px-2 py-1 text-xs font-medium hover:bg-accent"
-                        >
-                          Ні
-                        </button>
+              {candidates.map((c: any) => {
+                const isSelected = selected.has(c.id);
+                return (
+                  <li
+                    key={c.id}
+                    className={`flex items-center gap-2 px-5 py-4 transition-colors hover:bg-accent/40 ${isSelected ? "bg-primary/5" : ""}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleOne(c.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-primary"
+                    />
+
+                    <Link to="/candidates/$id" params={{ id: c.id }} className="flex min-w-0 flex-1 items-center gap-3">
+                      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent text-xs font-medium text-accent-foreground">
+                        {c.name.split(" ").map((p: string) => p[0]).slice(0,2).join("")}
                       </div>
-                    ) : (
-                      <button
-                        onClick={() => setConfirmDeleteId(c.id)}
-                        className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                        title="Видалити кандидата"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                </li>
-              ))}
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{c.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          <FileText className="mr-1 inline h-3 w-3" />
+                          {c.resume_filename ?? "—"} · {formatDistanceToNow(new Date(c.created_at), { addSuffix: true })}
+                        </p>
+                      </div>
+                    </Link>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <RecommendationBadge value={c.latest_analysis?.recommendation} status={c.status} />
+                      <Link to="/candidates/$id" params={{ id: c.id }}>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      </Link>
+                      {confirmDeleteId === c.id ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => deleteMut.mutate(c.id)}
+                            disabled={deleteMut.isPending}
+                            className="rounded bg-destructive px-2 py-1 text-xs font-medium text-white hover:bg-destructive/90"
+                          >
+                            {deleteMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Так"}
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="rounded bg-muted px-2 py-1 text-xs font-medium hover:bg-accent"
+                          >
+                            Ні
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDeleteId(c.id)}
+                          className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          title="Видалити кандидата"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
@@ -199,7 +318,6 @@ function DetailBlock({ title, body }: { title: string; body: string | null }) {
   const [expanded, setExpanded] = useState(false);
   if (!body?.trim()) return null;
 
-  // Збільшено preview з 300 до 500 символів
   const isLong = body.trim().length > 500;
   const preview = isLong && !expanded ? body.trim().slice(0, 500) + "…" : body.trim();
 
