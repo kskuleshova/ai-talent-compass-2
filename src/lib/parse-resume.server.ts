@@ -8,39 +8,37 @@ export async function parseResumeFromBase64(
 
   if (ext === "pdf") {
     try {
-      const PDFParser = (await import("pdf2json")).default;
+      const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      pdfjsLib.GlobalWorkerOptions.workerSrc = false as any;
 
-      const text = await new Promise<string>((resolve, reject) => {
-        const parser = new PDFParser(null, true);
-
-        parser.on("pdfParser_dataReady", (data: any) => {
-          try {
-            const pages = data?.Pages ?? [];
-            const result = pages
-              .map((page: any) =>
-                (page.Texts ?? [])
-                  .map((t: any) =>
-                    (t.R ?? [])
-                      .map((r: any) => decodeURIComponent(r.T ?? ""))
-                      .join("")
-                  )
-                  .join(" ")
-              )
-              .join("\n");
-            resolve(result.trim());
-          } catch (e) {
-            reject(e);
-          }
-        });
-
-        parser.on("pdfParser_dataError", (err: any) => {
-          reject(new Error(err?.parserError ?? "PDF parse error"));
-        });
-
-        parser.parseBuffer(buf);
+      const loadingTask = pdfjsLib.getDocument({
+        data: new Uint8Array(buf),
+        useWorkerFetch: false,
+        isEvalSupported: false,
+        useSystemFonts: true,
+        disableFontFace: true,
       });
 
-      return text;
+      const pdf = await loadingTask.promise;
+      console.log("[parse-resume] PDF loaded, pages:", pdf.numPages);
+
+      const pages: string[] = [];
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        console.log(`[parse-resume] Page ${i} items:`, content.items.length);
+
+        const text = content.items
+          .map((item: any) => ("str" in item ? item.str : ""))
+          .join(" ");
+        pages.push(text);
+      }
+
+      const result = pages.join("\n").trim();
+      console.log("[parse-resume] Total text length:", result.length);
+      console.log("[parse-resume] First 200 chars:", result.slice(0, 200));
+      return result;
     } catch (e) {
       console.error("PDF parse error:", e);
       return "";
@@ -50,6 +48,7 @@ export async function parseResumeFromBase64(
   if (ext === "docx") {
     try {
       const result = await mammoth.extractRawText({ buffer: buf });
+      console.log("[parse-resume] DOCX text length:", result.value.length);
       return result.value || "";
     } catch (e) {
       console.error("DOCX parse error:", e);
