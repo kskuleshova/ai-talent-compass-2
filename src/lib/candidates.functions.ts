@@ -270,3 +270,39 @@ export const reanalyzeCandidate = createServerFn({ method: "POST" })
 
     return { ok: true };
   });
+
+// ------------------------------
+// DELETE CANDIDATE
+// ------------------------------
+export const deleteCandidate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+
+    // Get resume path to delete from storage
+    const { data: candidate } = await supabase
+      .from("candidates")
+      .select("resume_path")
+      .eq("id", data.id)
+      .eq("owner_id", userId)
+      .single();
+
+    // Delete from storage if exists
+    if (candidate?.resume_path) {
+      await supabase.storage.from("resumes").remove([candidate.resume_path]);
+    }
+
+    // Delete analyses and notes (cascade should handle it, but just in case)
+    await supabase.from("candidate_analyses").delete().eq("candidate_id", data.id);
+    await supabase.from("recruiter_notes").delete().eq("candidate_id", data.id);
+
+    const { error } = await supabase
+      .from("candidates")
+      .delete()
+      .eq("id", data.id)
+      .eq("owner_id", userId);
+
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
