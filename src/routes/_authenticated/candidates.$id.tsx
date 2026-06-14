@@ -143,17 +143,18 @@ function CandidatePage() {
           )}
 
           <button
-            onClick={() => reanalyzeMut.mutate()}
-            disabled={reanalyzeMut.isPending || !candidate.resume_text}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
-          >
-            {reanalyzeMut.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            Переаналізувати
-          </button>
+  onClick={() => reanalyzeMut.mutate()}
+  disabled={reanalyzeMut.isPending}
+  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
+>
+  {reanalyzeMut.isPending ? (
+    <Loader2 className="h-4 w-4 animate-spin" />
+  ) : (
+    <RefreshCw className="h-4 w-4" />
+  )}
+  Переаналізувати
+</button>
+
         </div>
       </header>
 
