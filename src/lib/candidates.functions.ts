@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
-import { extractResumeText } from "../../server/resume-parser";
+const { extractResumeText } = require("../../server/resume-parser.cjs");
 import { analyzeCandidate } from "./ai-analysis.server";
 
 // ------------------------------
