@@ -82,7 +82,8 @@ export const uploadCandidate = createServerFn({ method: "POST" })
     let resumeText = "";
     try {
       // ⬇️ ІМПОРТ ТУТ, ВСЕРЕДИНІ ФУНКЦІЇ
-      const { extractResumeText } = await import("../../server/resume-parser.cjs");
+      const { extractResumeText } = await import("../../node/resume-parser.cjs");
+
 
       resumeText = await extractResumeText(buf, ext as "pdf" | "docx");
       console.log("Resume text extracted, length:", resumeText.length);
@@ -229,7 +230,8 @@ export const reanalyzeCandidate = createServerFn({ method: "POST" })
         const ext = candidate.resume_filename?.split(".").pop()?.toLowerCase() ?? "pdf";
 
         // ⬇️ ІМПОРТ ТУТ
-        const { extractResumeText } = await import("../../server/resume-parser.cjs");
+        const { extractResumeText } = await import("../../node/resume-parser.cjs");
+
 
         resumeText = await extractResumeText(buf, ext as "pdf" | "docx");
 
