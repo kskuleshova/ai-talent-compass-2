@@ -24,6 +24,7 @@ function VacancyDetail() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [candName, setCandName] = useState("");
+  const [fileName, setFileName] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
 
   // — Single delete (inline confirm) —
@@ -50,6 +51,7 @@ function VacancyDetail() {
       toast.success("Candidate uploaded and analyzed");
       setShowUpload(false); setCandName("");
       if (fileRef.current) fileRef.current.value = "";
+      setFileName(null);
       qc.invalidateQueries({ queryKey: ["vacancy", id] });
     },
     onError: (e: any) => toast.error(e.message ?? "Upload failed"),
@@ -154,11 +156,31 @@ function VacancyDetail() {
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium">Resume (PDF or DOCX)</label>
-              <input ref={fileRef} type="file" accept=".pdf,.docx" className="block text-sm" />
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".pdf,.docx"
+                className="sr-only"
+                onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
+              />
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-accent hover:border-ring cursor-pointer ${
+                  fileName
+                    ? "border-primary/40 bg-primary/5 text-foreground"
+                    : "border-input bg-background text-muted-foreground"
+                }`}
+              >
+                <FileText className="h-4 w-4 shrink-0" />
+                <span className="max-w-[200px] truncate">
+                  {fileName ?? "Вибрати файл…"}
+                </span>
+              </button>
             </div>
           </div>
           <div className="mt-4 flex justify-end gap-2">
-            <button type="button" onClick={() => setShowUpload(false)} className="rounded-md px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-accent">Cancel</button>
+            <button type="button" onClick={() => { setShowUpload(false); setFileName(null); }} className="rounded-md px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-accent">Cancel</button>
             <button type="submit" disabled={busy} className="inline-flex items-center gap-2 rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
               {busy && <Loader2 className="h-4 w-4 animate-spin" />} Upload & analyze
             </button>
