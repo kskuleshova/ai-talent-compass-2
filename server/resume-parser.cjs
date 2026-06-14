@@ -1,5 +1,6 @@
 const OpenAI = require("openai");
 const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.js");
+const { createCanvas } = require("canvas");
 
 // Вказуємо шлях до воркера pdfjs
 pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -18,16 +19,12 @@ async function extractPdfText(buffer) {
     const page = await pdf.getPage(i);
     const viewport = page.getViewport({ scale: 2 });
 
-    const canvasFactory = new pdfjsLib.NodeCanvasFactory();
-    const { canvas, context } = canvasFactory.create(
-      viewport.width,
-      viewport.height
-    );
+    const canvas = createCanvas(viewport.width, viewport.height);
+    const context = canvas.getContext("2d");
 
     await page.render({
       canvasContext: context,
       viewport,
-      canvasFactory,
     }).promise;
 
     const png = canvas.toBuffer("image/png");
