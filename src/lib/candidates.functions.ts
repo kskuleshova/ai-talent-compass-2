@@ -82,7 +82,7 @@ export const uploadCandidate = createServerFn({ method: "POST" })
     let resumeText = "";
     try {
       // ⬇️ ІМПОРТ ТУТ, ВСЕРЕДИНІ ФУНКЦІЇ
-      const { extractResumeText } = await import("../../../resume-parser.cjs");
+      const { extractResumeText } = await import("../../resume-parser.cjs")
 
 
 
@@ -231,7 +231,7 @@ export const reanalyzeCandidate = createServerFn({ method: "POST" })
         const ext = candidate.resume_filename?.split(".").pop()?.toLowerCase() ?? "pdf";
 
         // ⬇️ ІМПОРТ ТУТ
-        const { extractResumeText } = await import("../../../resume-parser.cjs");
+        const { extractResumeText } = await import("../../resume-parser.cjs");
 
 
 
