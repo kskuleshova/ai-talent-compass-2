@@ -8,7 +8,7 @@ import { analyzeCandidate } from "./ai-analysis.server";
 // GET CANDIDATE
 // ------------------------------
 export const getCandidate = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireSupabaseAuth])і
   .validator((d: { id: string }) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { data: candidate, error } = await context.supabase
