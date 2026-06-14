@@ -34,7 +34,7 @@ export type AnalysisResult = {
   model: string;
 };
 
-const MODEL = "gemini-3.5-flash";
+const MODEL = "gemini-2.0-flash";
 
 const SYSTEM = `Ти — AI-асистент рекрутера. Аналізуй резюме кандидата СУВОРО відповідно до вакансії.
 
@@ -119,7 +119,7 @@ if (!apiKey) throw new Error("GEMINI_API_KEY not set");
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts: [{ text: buildPrompt(vacancy, resumeText) }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
+        generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
       }),
     }
   );
