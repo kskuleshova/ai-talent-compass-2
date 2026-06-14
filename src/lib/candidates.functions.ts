@@ -78,13 +78,20 @@ export const uploadCandidate = createServerFn({ method: "POST" })
       .upload(path, buf, { contentType: data.mime, upsert: false });
     if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
 
-    // Extract text
+    // Extract text via API
     let resumeText = "";
     try {
-      const { extractResumeText } = await import("../../resume-parser.cjs");
+      const response = await fetch(`${process.env.VERCEL_URL}/api/parse-resume`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          base64: data.base64,
+          ext,
+        }),
+      });
 
-      resumeText = await extractResumeText(buf, ext as "pdf" | "docx");
-      console.log("Resume text extracted, length:", resumeText.length);
+      const { text } = await response.json();
+      resumeText = text || "";
     } catch (e) {
       console.error("Resume parsing failed", e);
     }
@@ -227,9 +234,17 @@ export const reanalyzeCandidate = createServerFn({ method: "POST" })
         const buf = Buffer.from(await file.arrayBuffer());
         const ext = candidate.resume_filename?.split(".").pop()?.toLowerCase() ?? "pdf";
 
-        const { extractResumeText } = await import("../../resume-parser.cjs");
+        const response = await fetch(`${process.env.VERCEL_URL}/api/parse-resume`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            base64: buf.toString("base64"),
+            ext,
+          }),
+        });
 
-        resumeText = await extractResumeText(buf, ext as "pdf" | "docx");
+        const { text } = await response.json();
+        resumeText = text || "";
 
         await supabase
           .from("candidates")
