@@ -1,7 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
-const { extractResumeText } = require("../../server/resume-parser.cjs");
 import { analyzeCandidate } from "./ai-analysis.server";
 
 // ------------------------------
@@ -82,6 +81,9 @@ export const uploadCandidate = createServerFn({ method: "POST" })
     // Extract text
     let resumeText = "";
     try {
+      // ⬇️ ІМПОРТ ТУТ, ВСЕРЕДИНІ ФУНКЦІЇ
+      const { extractResumeText } = await import("../../server/resume-parser.cjs");
+
       resumeText = await extractResumeText(buf, ext as "pdf" | "docx");
       console.log("Resume text extracted, length:", resumeText.length);
     } catch (e) {
@@ -198,7 +200,7 @@ export const updateAnalysis = createServerFn({ method: "POST" })
   });
 
 // ------------------------------
-// REANALYZE CANDIDATE (UPDATED)
+// REANALYZE CANDIDATE
 // ------------------------------
 export const reanalyzeCandidate = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -216,7 +218,7 @@ export const reanalyzeCandidate = createServerFn({ method: "POST" })
 
     let resumeText = candidate.resume_text ?? "";
 
-    // 2. If resume_text is empty — re-extract from storage
+    // 2. If resume_text is empty — re-extract
     if (!resumeText && candidate.resume_path) {
       const { data: file } = await supabase.storage
         .from("resumes")
@@ -225,6 +227,9 @@ export const reanalyzeCandidate = createServerFn({ method: "POST" })
       if (file) {
         const buf = Buffer.from(await file.arrayBuffer());
         const ext = candidate.resume_filename?.split(".").pop()?.toLowerCase() ?? "pdf";
+
+        // ⬇️ ІМПОРТ ТУТ
+        const { extractResumeText } = await import("../../server/resume-parser.cjs");
 
         resumeText = await extractResumeText(buf, ext as "pdf" | "docx");
 
