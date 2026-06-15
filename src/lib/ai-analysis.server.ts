@@ -79,7 +79,7 @@ ${v.historical_feedback || "(немає)"}
 
 РЕЗЮМЕ:
 """
-${resumeText.slice(0, 15000)}
+${resumeText.slice(0, 8000)}
 """
 
 Поверни ОДИН JSON-об'єкт точно такої структури (без markdown, без коментарів, лише чистий JSON):
