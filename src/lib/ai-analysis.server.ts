@@ -41,7 +41,7 @@ export type AnalysisResult = {
 // Платні (якісніші):
 // "openai/gpt-4o-mini"
 // "anthropic/claude-haiku-4-5"
-const MODEL = "google/gemini-2.0-flash-exp:free";
+const MODEL = "google/gemini-3.5-flash";
 
 const SYSTEM = `Ти — AI-асистент рекрутера. Аналізуй резюме кандидата СУВОРО відповідно до вакансії.
 
