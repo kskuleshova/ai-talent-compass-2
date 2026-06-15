@@ -26,6 +26,24 @@ function VacancyDetail() {
   const [candName, setCandName] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
+  const [dragging, setDragging] = useState(false);
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (!["pdf", "docx"].includes(ext ?? "")) {
+      toast.error("Підтримуються лише PDF або DOCX файли");
+      return;
+    }
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    if (fileRef.current) fileRef.current.files = dt.files;
+    setFileName(file.name);
+  };
+
 
   // — Single delete (inline confirm) —
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -145,7 +163,7 @@ function VacancyDetail() {
 
       {showUpload && (
         <form onSubmit={handleSubmit} className="mt-6 rounded-xl border border-border bg-card p-5">
-          <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+          <div className="grid gap-4 sm:grid-cols-2 sm:items-start">
             <div>
               <label className="mb-1.5 block text-sm font-medium">Candidate name</label>
               <input
@@ -163,20 +181,35 @@ function VacancyDetail() {
                 className="sr-only"
                 onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
               />
-              <button
-                type="button"
+              <div
+                onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={handleDrop}
                 onClick={() => fileRef.current?.click()}
-                className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-accent hover:border-ring cursor-pointer ${
-                  fileName
-                    ? "border-primary/40 bg-primary/5 text-foreground"
-                    : "border-input bg-background text-muted-foreground"
-                }`}
+                className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-5 text-center transition-colors
+                  ${dragging
+                    ? "border-primary bg-primary/5"
+                    : fileName
+                      ? "border-primary/40 bg-primary/5"
+                      : "border-input bg-background hover:border-ring hover:bg-accent/40"
+                  }`}
               >
-                <FileText className="h-4 w-4 shrink-0" />
-                <span className="max-w-[200px] truncate">
-                  {fileName ?? "Вибрати файл…"}
-                </span>
-              </button>
+                <Upload className={`h-6 w-6 ${dragging ? "text-primary" : "text-muted-foreground"}`} />
+                {fileName ? (
+                  <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                    <FileText className="h-4 w-4 shrink-0 text-primary" />
+                    <span className="max-w-[220px] truncate">{fileName}</span>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium text-foreground">
+                      {dragging ? "Відпустіть файл" : "Перетягніть файл сюди"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">або <span className="text-primary underline underline-offset-2">оберіть через провідник</span></p>
+                    <p className="text-xs text-muted-foreground">PDF або DOCX, до 10 MB</p>
+                  </>
+                )}
+              </div>
             </div>
           </div>
           <div className="mt-4 flex justify-end gap-2">
