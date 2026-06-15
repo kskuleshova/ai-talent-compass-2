@@ -373,8 +373,10 @@ function DetailBlock({ title, body }: { title: string; body: string | null }) {
   const [expanded, setExpanded] = useState(false);
   if (!body?.trim()) return null;
 
-  const isLong = body.trim().length > 500;
-  const preview = isLong && !expanded ? body.trim().slice(0, 500) + "…" : body.trim();
+  // Estimate if text is longer than ~5 lines (approx 400 chars or contains many newlines)
+  const trimmed = body.trim();
+  const lineCount = trimmed.split("\n").length;
+  const isLong = trimmed.length > 400 || lineCount > 5;
 
   return (
     <div className="rounded-xl border border-border bg-card p-5">
@@ -389,7 +391,9 @@ function DetailBlock({ title, body }: { title: string; body: string | null }) {
           </button>
         )}
       </div>
-      <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{preview}</p>
+      <p className={`mt-2 whitespace-pre-wrap text-sm leading-relaxed ${!expanded && isLong ? "line-clamp-5" : ""}`}>
+        {trimmed}
+      </p>
     </div>
   );
 }
