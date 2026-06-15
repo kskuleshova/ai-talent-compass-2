@@ -35,7 +35,10 @@ export function AppShell({ user, children }: { user: User; children: React.React
           <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-primary-foreground">
             <Sparkles className="h-4 w-4" />
           </div>
-          <span className="font-semibold tracking-tight">Hirelens</span>
+          <div className="flex flex-col leading-tight">
+            <span className="font-semibold tracking-tight">AI-screening</span>
+            <span className="text-xs text-muted-foreground font-normal">by Kiruka</span>
+          </div>
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-2">
@@ -121,7 +124,10 @@ export function AppShell({ user, children }: { user: User; children: React.React
             <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-primary-foreground">
               <Sparkles className="h-4 w-4" />
             </div>
-            <span className="font-semibold tracking-tight">Hirelens</span>
+            <div className="flex flex-col leading-tight">
+              <span className="font-semibold tracking-tight">AI-screening</span>
+              <span className="text-xs text-muted-foreground font-normal">by Kiruka</span>
+            </div>
           </div>
           <button onClick={signOut} className="text-sm text-muted-foreground">Sign out</button>
         </header>
