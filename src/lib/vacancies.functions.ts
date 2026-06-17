@@ -13,6 +13,19 @@ const CreateSchema = z.object({
   historical_feedback: z.string().max(10000).optional().default(""),
 });
 
+// Same shape as CreateSchema, but every field optional (partial update)
+const UpdateSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string().trim().min(1).max(200).optional(),
+  job_description: z.string().max(20000).optional(),
+  hiring_manager_brief: z.string().max(20000).optional(),
+  must_have: z.string().max(10000).optional(),
+  nice_to_have: z.string().max(10000).optional(),
+  screening_questions: z.string().max(10000).optional(),
+  test_task: z.string().max(10000).optional(),
+  historical_feedback: z.string().max(10000).optional(),
+});
+
 export const listVacancies = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -64,6 +77,25 @@ export const createVacancy = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { data: row, error } = await context.supabase
       .from("vacancies").insert({ ...data, owner_id: context.userId }).select().single();
+    if (error) throw new Error(error.message);
+    return row;
+  });
+
+// ------------------------------
+// UPDATE VACANCY
+// ------------------------------
+export const updateVacancy = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => UpdateSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { id, ...fields } = data;
+    const { data: row, error } = await context.supabase
+      .from("vacancies")
+      .update(fields)
+      .eq("id", id)
+      .eq("owner_id", context.userId)
+      .select()
+      .single();
     if (error) throw new Error(error.message);
     return row;
   });
