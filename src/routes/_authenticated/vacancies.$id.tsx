@@ -141,7 +141,7 @@ function VacancyDetail() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-10">
+    <div className="mx-auto w-full max-w-5xl px-6 py-8">
       <Link to="/dashboard" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-4 w-4" /> Vacancies
       </Link>
@@ -221,7 +221,7 @@ function VacancyDetail() {
         </form>
       )}
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[3fr_2fr]">
+      <div className="mt-6 grid gap-6 lg:grid-cols-[3fr_2fr]">
         <section>
           {/* Candidates header with select-all + bulk toolbar */}
           <div className="mb-3 flex min-h-[28px] items-center gap-3">
