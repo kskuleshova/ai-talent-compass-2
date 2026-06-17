@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getVacancy } from "@/lib/vacancies.functions";
 import { uploadCandidate, deleteCandidate } from "@/lib/candidates.functions";
-import { ArrowLeft, Upload, FileText, Loader2, ChevronRight, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, Upload, FileText, Loader2, ChevronRight, Trash2, ChevronDown, ChevronUp, Pencil } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -153,12 +153,21 @@ function VacancyDetail() {
             Created {new Date(vacancy.created_at).toLocaleDateString()} · {candidates.length} candidate{candidates.length === 1 ? "" : "s"}
           </p>
         </div>
-        <button
-          onClick={() => setShowUpload((s) => !s)}
-          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-        >
-          <Upload className="h-4 w-4" /> Upload candidate
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            to="/vacancies/$id/edit"
+            params={{ id }}
+            className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent"
+          >
+            <Pencil className="h-4 w-4" /> Редагувати
+          </Link>
+          <button
+            onClick={() => setShowUpload((s) => !s)}
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            <Upload className="h-4 w-4" /> Upload candidate
+          </button>
+        </div>
       </header>
 
       {showUpload && (
